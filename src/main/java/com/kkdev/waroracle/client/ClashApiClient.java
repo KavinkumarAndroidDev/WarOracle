@@ -2,7 +2,6 @@ package com.kkdev.waroracle.client;
 
 import java.io.IOException;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Component;
@@ -17,6 +16,7 @@ import com.kkdev.waroracle.dto.common.ErrorResponse;
 import com.kkdev.waroracle.dto.player.Player;
 import com.kkdev.waroracle.dto.warlog.ClanWarLogResponse;
 import com.kkdev.waroracle.exception.ClashApiException;
+import com.kkdev.waroracle.service.ClashApiCacheService;
 
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.json.JsonMapper;
@@ -27,72 +27,143 @@ public class ClashApiClient
 {
 
 	private final RestClient restClient;
-	private final String apiToken;
+	private final ClashApiTokenProvider tokenProvider;
 	private final JsonMapper jsonMapper;
+	private final ClashApiCacheService cacheService;
 
-	public ClashApiClient(RestClient.Builder builder, @Value("${clash.api.token}") String apiToken, JsonMapper jsonMapper)
+	public ClashApiClient(
+			RestClient.Builder builder,
+			ClashApiTokenProvider tokenProvider,
+			JsonMapper jsonMapper,
+			ClashApiCacheService cacheService)
 	{
-		this.apiToken = (apiToken != null) ? apiToken.trim() : "";
+		this.tokenProvider = tokenProvider;
 		this.jsonMapper = jsonMapper;
+		this.cacheService = cacheService;
 		this.restClient = builder.baseUrl(ClashAPIConstants.BASE_URL).build();
 	}
 
 	public Player getPlayer(String playerTag)
 	{
-		log.debug("Calling Clash API for playerTag: {}", playerTag);
-		return restClient.get()
+		Player cached = cacheService.getPlayer(playerTag);
+		if (cached != null)
+		{
+			return cached;
+		}
+
+		String token = tokenProvider.getNextToken();
+		log.debug("Calling live Clash API for playerTag: {}", playerTag);
+		Player player = restClient.get()
 				.uri(ClashAPIConstants.GET_PLAYERS_DETAILS, playerTag)
-				.header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 				.retrieve()
-				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.PLAYER_NOT_FOUND, playerTag))
+				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.PLAYER_NOT_FOUND, playerTag, token))
 				.body(Player.class);
+
+		if (player != null)
+		{
+			cacheService.putPlayer(playerTag, player);
+		}
+		return player;
 	}
 
 	public Clan getClan(String clanTag)
 	{
-		log.debug("Calling Clash API for clanTag: {}", clanTag);
-		return restClient.get()
+		Clan cached = cacheService.getClan(clanTag);
+		if (cached != null)
+		{
+			return cached;
+		}
+
+		String token = tokenProvider.getNextToken();
+		log.debug("Calling live Clash API for clanTag: {}", clanTag);
+		Clan clan = restClient.get()
 				.uri(ClashAPIConstants.GET_CLAN_DETAILS, clanTag)
-				.header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 				.retrieve()
-				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.CLAN_NOT_FOUND, clanTag))
+				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.CLAN_NOT_FOUND, clanTag, token))
 				.body(Clan.class);
+
+		if (clan != null)
+		{
+			cacheService.putClan(clanTag, clan);
+		}
+		return clan;
 	}
 
 	public CurrentWar getCurrentWar(String clanTag)
 	{
-		log.debug("Calling Clash API for current war of clanTag: {}", clanTag);
-		return restClient.get()
+		CurrentWar cached = cacheService.getCurrentWar(clanTag);
+		if (cached != null)
+		{
+			return cached;
+		}
+
+		String token = tokenProvider.getNextToken();
+		log.debug("Calling live Clash API for current war of clanTag: {}", clanTag);
+		CurrentWar currentWar = restClient.get()
 				.uri(ClashAPIConstants.GET_CLANS_CURRENT_WAR, clanTag)
-				.header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 				.retrieve()
-				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.CLAN_NOT_FOUND, clanTag))
+				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.CLAN_NOT_FOUND, clanTag, token))
 				.body(CurrentWar.class);
+
+		if (currentWar != null)
+		{
+			cacheService.putCurrentWar(clanTag, currentWar);
+		}
+		return currentWar;
 	}
 
 	public ClanWarLogResponse getClanWarLog(String clanTag, int limit)
 	{
-		log.debug("Calling Clash API for clan warlog of clanTag: {} (limit={})", clanTag, limit);
-		return restClient.get()
+		ClanWarLogResponse cached = cacheService.getClanWarLog(clanTag);
+		if (cached != null)
+		{
+			return cached;
+		}
+
+		String token = tokenProvider.getNextToken();
+		log.debug("Calling live Clash API for clan warlog of clanTag: {} (limit={})", clanTag, limit);
+		ClanWarLogResponse warLog = restClient.get()
 				.uri(ClashAPIConstants.GET_CLAN_WARLOG, clanTag, limit)
-				.header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 				.retrieve()
-				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.CLAN_NOT_FOUND, clanTag))
+				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.CLAN_NOT_FOUND, clanTag, token))
 				.body(ClanWarLogResponse.class);
+
+		if (warLog != null)
+		{
+			cacheService.putClanWarLog(clanTag, warLog);
+		}
+		return warLog;
 	}
 
 	public PlayerBattleLogResponse getPlayerBattleLog(String playerTag)
 	{
-		log.debug("Calling Clash API for battlelog of playerTag: {}", playerTag);
-		return restClient.get()
+		PlayerBattleLogResponse cached = cacheService.getPlayerBattleLog(playerTag);
+		if (cached != null)
+		{
+			return cached;
+		}
+
+		String token = tokenProvider.getNextToken();
+		log.debug("Calling live Clash API for battlelog of playerTag: {}", playerTag);
+		PlayerBattleLogResponse battleLog = restClient.get()
 				.uri(ClashAPIConstants.GET_PLAYER_BATTLELOG, playerTag)
-				.header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 				.retrieve()
-				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.PLAYER_NOT_FOUND, playerTag))
+				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.PLAYER_NOT_FOUND, playerTag, token))
 				.body(PlayerBattleLogResponse.class);
+
+		if (battleLog != null)
+		{
+			cacheService.putPlayerBattleLog(playerTag, battleLog);
+		}
+		return battleLog;
 	}
 
-	private void handleError(ClientHttpResponse response, ErrorCodes notFoundCode, String tag) throws IOException
+	private void handleError(ClientHttpResponse response, ErrorCodes notFoundCode, String tag, String tokenUsed) throws IOException
 	{
 		int statusCode = response.getStatusCode().value();
 		log.error("Clash API returned error status {} for tag: {}", statusCode, tag);
@@ -128,6 +199,7 @@ public class ClashApiClient
 				}
 				throw new ClashApiException(ErrorCodes.CLASH_API_UNAUTHORIZED);
 			case 429:
+				tokenProvider.markRateLimited(tokenUsed);
 				throw new ClashApiException(ErrorCodes.CLASH_API_RATE_LIMITED);
 			default:
 				throw new ClashApiException(ErrorCodes.CLASH_API_ERROR);

@@ -1,5 +1,7 @@
 package com.kkdev.waroracle.service;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -17,9 +19,11 @@ import com.kkdev.waroracle.dto.model.ClanPerformanceModel;
 import com.kkdev.waroracle.dto.model.MatchupStarProbability;
 import com.kkdev.waroracle.dto.model.PlayerPerformanceModel;
 import com.kkdev.waroracle.dto.model.WarPerformanceModel;
+import com.kkdev.waroracle.dto.player.Player;
 import com.kkdev.waroracle.dto.simulation.SimulationQuality;
 import com.kkdev.waroracle.dto.warlog.ClanWarLogItem;
 import com.kkdev.waroracle.dto.warlog.ClanWarLogResponse;
+import com.kkdev.waroracle.entity.WarAttackEntity;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,15 +34,29 @@ public class PerformanceModelingService
 
 	private static final double DEFAULT_ATTACK_PARTICIPATION_RATE = 0.90;
 	private static final double PRIOR_WEIGHT = 3.0;
+	private static final double HALF_LIFE_DAYS = 30.0;
+
+	private final EmpiricalPriorCalibrationService empiricalPriorCalibrationService;
+	private final HeroEquipmentPowerCalculator heroEquipmentPowerCalculator;
+
+	public PerformanceModelingService(
+			EmpiricalPriorCalibrationService empiricalPriorCalibrationService,
+			HeroEquipmentPowerCalculator heroEquipmentPowerCalculator)
+	{
+		this.empiricalPriorCalibrationService = empiricalPriorCalibrationService;
+		this.heroEquipmentPowerCalculator = heroEquipmentPowerCalculator;
+	}
 
 	public WarPerformanceModel buildWarPerformanceModel(
 			CurrentWar currentWar,
 			ClanWarLogResponse homeClanWarLog,
 			ClanWarLogResponse opponentClanWarLog,
 			Map<String, List<PlayerBattleLogItem>> playerBattleLogs,
+			Map<String, List<WarAttackEntity>> playerWarAttacks,
+			Map<String, Player> livePlayerProfiles,
 			SimulationQuality quality)
 	{
-		log.info("Building war performance model for war state: {}", currentWar.getState());
+		log.info("Building hybrid war performance model for war state: {}", currentWar.getState());
 
 		SimulationQuality simulationQuality = (quality != null) ? quality : SimulationQuality.HIGH;
 
@@ -46,12 +64,16 @@ public class PerformanceModelingService
 				currentWar.getClan(),
 				homeClanWarLog,
 				playerBattleLogs,
+				playerWarAttacks,
+				livePlayerProfiles,
 				currentWar.getAttacksPerMember());
 
 		ClanPerformanceModel opponentClanModel = buildClanPerformanceModel(
 				currentWar.getOpponent(),
 				opponentClanWarLog,
 				playerBattleLogs,
+				playerWarAttacks,
+				livePlayerProfiles,
 				currentWar.getAttacksPerMember());
 
 		return WarPerformanceModel.builder()
@@ -69,6 +91,8 @@ public class PerformanceModelingService
 			WarClan warClan,
 			ClanWarLogResponse clanWarLog,
 			Map<String, List<PlayerBattleLogItem>> playerBattleLogs,
+			Map<String, List<WarAttackEntity>> playerWarAttacks,
+			Map<String, Player> livePlayerProfiles,
 			int attacksPerMember)
 	{
 		if (warClan == null)
@@ -85,8 +109,15 @@ public class PerformanceModelingService
 		{
 			for (WarMember member : warClan.getMembers())
 			{
-				List<PlayerBattleLogItem> battles = playerBattleLogs.getOrDefault(member.getTag(), Collections.emptyList());
-				playerModels.add(buildPlayerPerformanceModel(member, battles, attacksPerMember));
+				List<PlayerBattleLogItem> battles = playerBattleLogs != null
+						? playerBattleLogs.getOrDefault(member.getTag(), Collections.emptyList())
+						: Collections.emptyList();
+				List<WarAttackEntity> dbAttacks = playerWarAttacks != null
+						? playerWarAttacks.getOrDefault(member.getTag(), Collections.emptyList())
+						: Collections.emptyList();
+				Player liveProfile = livePlayerProfiles != null ? livePlayerProfiles.get(member.getTag()) : null;
+
+				playerModels.add(buildPlayerPerformanceModel(member, battles, dbAttacks, liveProfile, attacksPerMember));
 			}
 		}
 
@@ -105,6 +136,8 @@ public class PerformanceModelingService
 	public PlayerPerformanceModel buildPlayerPerformanceModel(
 			WarMember member,
 			List<PlayerBattleLogItem> battleLogs,
+			List<WarAttackEntity> dbWarAttacks,
+			Player liveProfile,
 			int attacksPerMember)
 	{
 		int attacksMade = (member.getAttacks() != null) ? member.getAttacks().size() : 0;
@@ -131,10 +164,14 @@ public class PerformanceModelingService
 			}
 		}
 
+		double offensiveMultiplier = heroEquipmentPowerCalculator.calculateOffensiveMultiplier(liveProfile);
+
 		Map<Integer, MatchupStarProbability> matchupProbabilities = calculateMatchupProbabilities(
 				member.getTownhallLevel(),
 				homeVillageOffense,
-				member.getAttacks());
+				dbWarAttacks,
+				member.getAttacks(),
+				offensiveMultiplier);
 
 		double avgStarsConceded = 0.0;
 		double avgDestConceded = 0.0;
@@ -192,22 +229,53 @@ public class PerformanceModelingService
 	private Map<Integer, MatchupStarProbability> calculateMatchupProbabilities(
 			int playerTh,
 			List<PlayerBattleLogItem> offensiveBattles,
-			List<WarAttack> currentWarAttacks)
+			List<WarAttackEntity> dbWarAttacks,
+			List<WarAttack> currentWarAttacks,
+			double offensiveMultiplier)
 	{
-		Map<Integer, List<AttackSample>> samplesByDiff = new HashMap<>();
+		Map<Integer, List<WeightedAttackSample>> samplesByDiff = new HashMap<>();
 		for (int diff = -2; diff <= 2; diff++)
 		{
 			samplesByDiff.put(diff, new ArrayList<>());
 		}
 
-		for (PlayerBattleLogItem battle : offensiveBattles)
+		LocalDateTime now = LocalDateTime.now();
+
+		if (offensiveBattles != null)
 		{
-			if (battle.getOpponentTownHallLevel() != null && battle.getStars() != null)
+			for (PlayerBattleLogItem battle : offensiveBattles)
 			{
-				int diff = playerTh - battle.getOpponentTownHallLevel();
-				int clampedDiff = Math.max(-2, Math.min(2, diff));
-				double dest = (battle.getDestructionPercentage() != null) ? battle.getDestructionPercentage() : 50.0;
-				samplesByDiff.get(clampedDiff).add(new AttackSample(battle.getStars(), dest));
+				if (battle.getOpponentTownHallLevel() != null && battle.getStars() != null)
+				{
+					int diff = playerTh - battle.getOpponentTownHallLevel();
+					int clampedDiff = Math.max(-2, Math.min(2, diff));
+					double dest = (battle.getDestructionPercentage() != null) ? battle.getDestructionPercentage() : 50.0;
+					double sampleWeight = 1.0;
+					samplesByDiff.get(clampedDiff).add(new WeightedAttackSample(battle.getStars(), dest, sampleWeight));
+				}
+			}
+		}
+
+		if (dbWarAttacks != null)
+		{
+			for (WarAttackEntity attack : dbWarAttacks)
+			{
+				if (attack.getAttackerTh() != null && attack.getAttackerTh() == playerTh && attack.getDefenderTh() != null)
+				{
+					int diff = playerTh - attack.getDefenderTh();
+					int clampedDiff = Math.max(-2, Math.min(2, diff));
+					double dest = attack.getDestructionPercentage() != null ? attack.getDestructionPercentage().doubleValue() : 50.0;
+
+					double daysElapsed = 0.0;
+					if (attack.getCreatedAt() != null)
+					{
+						daysElapsed = (double) Duration.between(attack.getCreatedAt(), now).toHours() / 24.0;
+					}
+					double decayWeight = Math.pow(0.5, Math.max(0.0, daysElapsed) / HALF_LIFE_DAYS);
+					double warAttackWeight = 2.0 * decayWeight;
+
+					samplesByDiff.get(clampedDiff).add(new WeightedAttackSample(attack.getStars(), dest, warAttackWeight));
+				}
 			}
 		}
 
@@ -215,80 +283,55 @@ public class PerformanceModelingService
 
 		for (int diff = -2; diff <= 2; diff++)
 		{
-			List<AttackSample> samples = samplesByDiff.get(diff);
-			double[] prior = getPriorStarProbabilities(diff);
-			double priorDest = getPriorDestruction(diff);
+			List<WeightedAttackSample> samples = samplesByDiff.get(diff);
+			double[] prior = empiricalPriorCalibrationService.getPriorStarProbabilities(diff);
+			double priorDest = empiricalPriorCalibrationService.getPriorDestruction(diff);
 
-			int count0 = 0;
-			int count1 = 0;
-			int count2 = 0;
-			int count3 = 0;
+			double weightedCount0 = 0.0;
+			double weightedCount1 = 0.0;
+			double weightedCount2 = 0.0;
+			double weightedCount3 = 0.0;
 			double totalObservedDest = 0.0;
+			double totalWeight = 0.0;
 
-			for (AttackSample sample : samples)
+			for (WeightedAttackSample sample : samples)
 			{
-				if (sample.stars == 0) count0++;
-				else if (sample.stars == 1) count1++;
-				else if (sample.stars == 2) count2++;
-				else if (sample.stars >= 3) count3++;
-				totalObservedDest += sample.destruction;
+				if (sample.stars == 0) weightedCount0 += sample.weight;
+				else if (sample.stars == 1) weightedCount1 += sample.weight;
+				else if (sample.stars == 2) weightedCount2 += sample.weight;
+				else if (sample.stars >= 3) weightedCount3 += sample.weight;
+
+				totalObservedDest += (sample.destruction * sample.weight);
+				totalWeight += sample.weight;
 			}
 
-			int sampleSize = samples.size();
-			double denom = sampleSize + PRIOR_WEIGHT;
+			double denom = totalWeight + PRIOR_WEIGHT;
 
-			double prob0 = (count0 + PRIOR_WEIGHT * prior[0]) / denom;
-			double prob1 = (count1 + PRIOR_WEIGHT * prior[1]) / denom;
-			double prob2 = (count2 + PRIOR_WEIGHT * prior[2]) / denom;
-			double prob3 = (count3 + PRIOR_WEIGHT * prior[3]) / denom;
+			double prob0 = (weightedCount0 + PRIOR_WEIGHT * prior[0]) / denom;
+			double prob1 = (weightedCount1 + PRIOR_WEIGHT * prior[1]) / denom;
+			double prob2 = (weightedCount2 + PRIOR_WEIGHT * prior[2]) / denom;
+			double prob3 = (weightedCount3 + PRIOR_WEIGHT * prior[3]) / denom;
 
 			double expectedDest = (totalObservedDest + PRIOR_WEIGHT * priorDest) / denom;
+
+			double adjustedProb3 = prob3 * offensiveMultiplier;
+			double diffProb3 = prob3 - adjustedProb3;
+			double adjustedProb2 = prob2 + (diffProb3 * 0.70);
+			double adjustedProb1 = prob1 + (diffProb3 * 0.30);
+			double adjustedDest = expectedDest * (0.85 + (0.15 * offensiveMultiplier));
 
 			result.put(diff, MatchupStarProbability.builder()
 					.thDifference(diff)
 					.prob0Star(prob0)
-					.prob1Star(prob1)
-					.prob2Star(prob2)
-					.prob3Star(prob3)
-					.expectedDestruction(expectedDest)
-					.sampleCount(sampleSize)
+					.prob1Star(adjustedProb1)
+					.prob2Star(adjustedProb2)
+					.prob3Star(adjustedProb3)
+					.expectedDestruction(Math.min(100.0, adjustedDest))
+					.sampleCount((int) Math.round(totalWeight))
 					.build());
 		}
 
 		return result;
-	}
-
-	private double[] getPriorStarProbabilities(int thDiff)
-	{
-		if (thDiff >= 2)
-		{
-			return new double[]{0.01, 0.02, 0.07, 0.90};
-		}
-		else if (thDiff == 1)
-		{
-			return new double[]{0.02, 0.05, 0.18, 0.75};
-		}
-		else if (thDiff == 0)
-		{
-			return new double[]{0.05, 0.15, 0.50, 0.30};
-		}
-		else if (thDiff == -1)
-		{
-			return new double[]{0.10, 0.40, 0.45, 0.05};
-		}
-		else
-		{
-			return new double[]{0.25, 0.55, 0.19, 0.01};
-		}
-	}
-
-	private double getPriorDestruction(int thDiff)
-	{
-		if (thDiff >= 2) return 99.0;
-		if (thDiff == 1) return 95.0;
-		if (thDiff == 0) return 85.0;
-		if (thDiff == -1) return 68.0;
-		return 52.0;
 	}
 
 	private double calculateDefenseRating(double avgStarsConceded, double avgDestConceded)
@@ -373,15 +416,17 @@ public class PerformanceModelingService
 		return (warCount > 0) ? (totalDest / warCount) : 0.0;
 	}
 
-	private static class AttackSample
+	private static class WeightedAttackSample
 	{
 		final int stars;
 		final double destruction;
+		final double weight;
 
-		AttackSample(int stars, double destruction)
+		WeightedAttackSample(int stars, double destruction, double weight)
 		{
 			this.stars = stars;
 			this.destruction = destruction;
+			this.weight = weight;
 		}
 	}
 }

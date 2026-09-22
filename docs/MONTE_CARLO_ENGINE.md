@@ -2,21 +2,30 @@
 
 ## 1. Mathematical & Statistical Foundations
 
-The WarOracle predictive engine estimates the outcome of a Clan War using **Monte Carlo simulation calibrated with Bayesian Dirichlet-Multinomial priors**.
+The WarOracle predictive engine estimates the outcome of a Clan War using **Monte Carlo simulation calibrated with Bayesian Dirichlet-Multinomial priors, Dynamic Hero & Equipment Scaling, and Hybrid Evidence Fusion**.
 
 ```
                            Raw Player & War Telemetry
                                        │
                                        ▼
                    ┌───────────────────────────────────────┐
-                   │  Bayesian Matchup Probability Matrix  │
-                   │    (TH Differential + Prior Weight)   │
+                   │    Hero & Equipment Power Scorer      │
+                   │      (R_hero, R_gear -> M_offense)    │
                    └───────────────────┬───────────────────┘
                                        │
                                        ▼
                    ┌───────────────────────────────────────┐
-                   │    Player Defense Rating Modifiers    │
-                   │    (Avg Stars Conceded & Dest %)      │
+                   │   Hybrid Evidence Fusion Engine       │
+                   │   • Live Battle Logs (Weight = 1.0)   │
+                   │   • Stored War Attacks (Weight = 2.0) │
+                   │   • Exponential Time Decay (30d T1/2) │
+                   │   • Town Hall Version-Gated Filter    │
+                   └───────────────────┬───────────────────┘
+                                       │
+                                       ▼
+                   ┌───────────────────────────────────────┐
+                   │    Dynamic Empirical Global Priors    │
+                   │     (Hazelcast-Cached Aggregation)    │
                    └───────────────────┬───────────────────┘
                                        │
                                        ▼
@@ -36,44 +45,34 @@ The WarOracle predictive engine estimates the outcome of a Clan War using **Mont
 
 ---
 
-## 2. Bayesian Prior Weighting & Matchup Matrix
+## 2. Hero & Equipment Skill Modeling
 
-For any matchup between an attacker with Town Hall $TH_{\text{attacker}}$ and a defender with Town Hall $TH_{\text{defender}}$, the Town Hall difference is defined as:
+Hero levels and active Hero Equipment significantly impact a player's ability to convert attacks into 3 stars:
 
-$$\Delta TH = \text{clamp}(TH_{\text{attacker}} - TH_{\text{defender}}, -2, +2)$$
+### 2.1 Hero Power Ratio ($R_{\text{hero}}$)
+$$R_{\text{hero}} = \frac{1}{|H|} \sum_{h \in H} \frac{\text{level}(h)}{\text{maxLevel}(h)}$$
 
-### 2.1 Default Prior Distributions
+### 2.2 Equipment Power Ratio ($R_{\text{gear}}$)
+$$R_{\text{gear}} = \frac{1}{|E|} \sum_{e \in E} \frac{\text{level}(e)}{\text{maxLevel}(e)}$$
 
-When a player has zero or few observed attacks at a specific $\Delta TH$, the engine applies empirical baseline priors:
-
-| $\Delta TH$ | Heuristic Prior $(P_0, P_1, P_2, P_3)$ | Expected Destruction % |
-| :---: | :---: | :---: |
-| **$+2$** (Attacking 2 THs down) | `[0.01, 0.02, 0.07, 0.90]` | 99.0% |
-| **$+1$** (Attacking 1 TH down) | `[0.02, 0.05, 0.18, 0.75]` | 95.0% |
-| **$0$** (Mirror Town Hall) | `[0.05, 0.15, 0.50, 0.30]` | 85.0% |
-| **$-1$** (Attacking 1 TH up) | `[0.10, 0.40, 0.45, 0.05]` | 68.0% |
-| **$-2$** (Attacking 2 THs up) | `[0.25, 0.55, 0.19, 0.01]` | 52.0% |
-
-### 2.2 Bayesian Posterior Updating
-
-Given $N_{\text{obs}}$ observed attacks with star counts $c_0, c_1, c_2, c_3$, and prior weight $W_{\text{prior}} = 3.0$:
-
-$$P(k\text{ stars} \mid \Delta TH) = \frac{c_k + W_{\text{prior}} \cdot P_k^{\text{prior}}}{N_{\text{obs}} + W_{\text{prior}}} \quad \text{for } k \in \{0, 1, 2, 3\}$$
-
-Expected destruction percentage is updated analogously:
-
-$$E[\text{Destruction}] = \frac{\sum \text{observed destruction} + W_{\text{prior}} \cdot \text{Dest}^{\text{prior}}}{N_{\text{obs}} + W_{\text{prior}}}$$
+### 2.3 Offensive Strength Multiplier ($M_{\text{offense}}$)
+$$M_{\text{offense}} = 0.70 + 0.15 \cdot R_{\text{hero}} + 0.15 \cdot R_{\text{gear}} \in [0.60, 1.00]$$
 
 ---
 
-## 3. Defense Rating Calculation
+## 3. Hybrid Bayesian Evidence Fusion
 
-Each defender base has an inherent defensive strength rating $R_{\text{def}} \in [0.5, 1.5]$ computed from their historical defense logs and current best conceded attack:
+For every player attacking at Town Hall differential $\Delta TH = \text{clamp}(TH_{\text{attacker}} - TH_{\text{defender}}, -2, +2)$:
 
-$$R_{\text{def}} = 1.0 + (2.0 - \text{AvgStarsConceded}) \times 0.3 + (80.0 - \text{AvgDestConceded}) \times 0.005$$
+### 3.1 Time-Decay Weighting
+For an attack occurring $D$ days ago:
+$$w_i = W_{\text{base}} \cdot (0.5)^{\frac{D}{30.0}}$$
+* **Live Battle Logs**: $W_{\text{base}} = 1.0$ (multiplayer practice form).
+* **Database Clan War Attacks**: $W_{\text{base}} = 2.0$ (authenticated competitive war attacks, filtered by $\text{attacker\_th} == \text{current\_th}$).
 
-* $R_{\text{def}} > 1.0$: Strong anti-3-star base layout. Reduces attacker's 3-star probability.
-* $R_{\text{def}} < 1.0$: Weak or rushed base. Increases attacker's 3-star probability.
+### 3.2 Dynamic Empirical Global Priors
+Maintained in Hazelcast RAM from aggregated MySQL telemetry:
+$$P(k\text{ stars} \mid \Delta TH) = \frac{\sum w_i \cdot \mathbb{I}(\text{stars}=k) + W_{\text{prior}} \cdot P_{\text{empirical}}(k \mid \Delta TH)}{\sum w_i + W_{\text{prior}}}$$
 
 ---
 

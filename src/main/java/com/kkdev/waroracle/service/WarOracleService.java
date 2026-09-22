@@ -1,6 +1,7 @@
 package com.kkdev.waroracle.service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -23,7 +24,9 @@ import com.kkdev.waroracle.dto.simulation.SimulationQualityOption;
 import com.kkdev.waroracle.dto.simulation.SimulationRequest;
 import com.kkdev.waroracle.dto.simulation.SimulationResult;
 import com.kkdev.waroracle.dto.warlog.ClanWarLogResponse;
+import com.kkdev.waroracle.entity.WarAttackEntity;
 import com.kkdev.waroracle.exception.ClashApiException;
+import com.kkdev.waroracle.repository.WarAttackRepository;
 
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +41,7 @@ public class WarOracleService
 	private final PerformanceModelingService performanceModelingService;
 	private final MonteCarloSimulationService monteCarloSimulationService;
 	private final WarPersistenceService warPersistenceService;
+	private final WarAttackRepository warAttackRepository;
 	private final ExecutorService executorService = Executors.newFixedThreadPool(10);
 
 	public WarOracleService(
@@ -45,13 +49,15 @@ public class WarOracleService
 			ClanService clanService,
 			PerformanceModelingService performanceModelingService,
 			MonteCarloSimulationService monteCarloSimulationService,
-			WarPersistenceService warPersistenceService)
+			WarPersistenceService warPersistenceService,
+			WarAttackRepository warAttackRepository)
 	{
 		this.playerService = playerService;
 		this.clanService = clanService;
 		this.performanceModelingService = performanceModelingService;
 		this.monteCarloSimulationService = monteCarloSimulationService;
 		this.warPersistenceService = warPersistenceService;
+		this.warAttackRepository = warAttackRepository;
 	}
 
 	public StatisticsDetails getStatistics(String playerTag)
@@ -74,10 +80,25 @@ public class WarOracleService
 
 		if (playerService.isPlayerInClan(player))
 		{
-			String clanTag = player.getClan().getTag();
+			String clanTag = normalizeTag(player.getClan().getTag());
 			log.debug("Player is affiliated with clanTag: {}. Fetching clan & war data.", clanTag);
-			clan = clanService.getClanDetails(clanTag);
-			currentWar = clanService.getCurrentWar(clanTag);
+			try
+			{
+				clan = clanService.getClanDetails(clanTag);
+			}
+			catch (Exception ex)
+			{
+				log.warn("Failed to fetch clan details for {}: {}", clanTag, ex.getMessage());
+			}
+
+			try
+			{
+				currentWar = clanService.getCurrentWar(clanTag);
+			}
+			catch (Exception ex)
+			{
+				log.warn("Current war details private or unavailable for {}: {}", clanTag, ex.getMessage());
+			}
 		}
 		else
 		{
@@ -94,21 +115,39 @@ public class WarOracleService
 	public StatisticsDetails getClanStatistics(String clanTag)
 	{
 		String normalizedTag = normalizeTag(clanTag);
-		log.info("Aggregating statistics directly for clanTag: {}", normalizedTag);
+		log.info("Aggregating statistics for clanTag: {}", normalizedTag);
 		StatisticsDetails details = new StatisticsDetails();
 		Clan clan = null;
 		CurrentWar currentWar = null;
 
 		if (normalizedTag != null && !normalizedTag.isEmpty())
 		{
-			clan = clanService.getClanDetails(normalizedTag);
-			currentWar = clanService.getCurrentWar(normalizedTag);
+			try
+			{
+				clan = clanService.getClanDetails(normalizedTag);
+			}
+			catch (Exception ex)
+			{
+				log.warn("Failed to fetch clan details for {}: {}", normalizedTag, ex.getMessage());
+			}
+
+			try
+			{
+				currentWar = clanService.getCurrentWar(normalizedTag);
+			}
+			catch (Exception ex)
+			{
+				log.warn("Current war details private or unavailable for {}: {}", normalizedTag, ex.getMessage());
+			}
 		}
 
-		details.setPlayer(null);
+		if (clan == null && currentWar == null)
+		{
+			throw new ClashApiException(ErrorCodes.CLAN_NOT_FOUND);
+		}
+
 		details.setClan(clan);
 		details.setCurrentWar(currentWar);
-
 		return details;
 	}
 
@@ -209,12 +248,16 @@ public class WarOracleService
 		}
 
 		Map<String, List<PlayerBattleLogItem>> playerBattleLogs = fetchPlayerBattleLogsInParallel(participantTags);
+		Map<String, Player> livePlayerProfiles = fetchPlayerProfilesInParallel(participantTags);
+		Map<String, List<WarAttackEntity>> playerWarAttacks = fetchHistoricalWarAttacks(participantTags);
 
 		return performanceModelingService.buildWarPerformanceModel(
 				currentWar,
 				homeClanWarLog,
 				opponentClanWarLog,
 				playerBattleLogs,
+				playerWarAttacks,
+				livePlayerProfiles,
 				request.getQuality());
 	}
 
@@ -233,6 +276,61 @@ public class WarOracleService
 		}
 
 		CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+		return results;
+	}
+
+	private Map<String, Player> fetchPlayerProfilesInParallel(List<String> playerTags)
+	{
+		Map<String, Player> results = new ConcurrentHashMap<>();
+		List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+		for (String tag : playerTags)
+		{
+			CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+				try
+				{
+					Player player = playerService.getPlayerDetails(tag);
+					if (player != null)
+					{
+						results.put(tag, player);
+					}
+				}
+				catch (Exception ex)
+				{
+					log.debug("Could not fetch live profile for tag {}: {}", tag, ex.getMessage());
+				}
+			}, executorService);
+			futures.add(future);
+		}
+
+		CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+		return results;
+	}
+
+	private Map<String, List<WarAttackEntity>> fetchHistoricalWarAttacks(List<String> playerTags)
+	{
+		Map<String, List<WarAttackEntity>> results = new HashMap<>();
+		if (playerTags == null || playerTags.isEmpty())
+		{
+			return results;
+		}
+
+		try
+		{
+			List<WarAttackEntity> attacks = warAttackRepository.findByAttackerTagIn(playerTags);
+			if (attacks != null)
+			{
+				for (WarAttackEntity attack : attacks)
+				{
+					results.computeIfAbsent(attack.getAttackerTag(), k -> new ArrayList<>()).add(attack);
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			log.warn("Failed to fetch batch historical war attacks from MySQL: {}", ex.getMessage());
+		}
+
 		return results;
 	}
 
@@ -265,6 +363,17 @@ public class WarOracleService
 			return tag;
 		}
 		String trimmed = tag.trim();
+		while (trimmed.startsWith("%23") || trimmed.startsWith("%2523"))
+		{
+			if (trimmed.startsWith("%2523"))
+			{
+				trimmed = trimmed.substring(5);
+			}
+			else
+			{
+				trimmed = trimmed.substring(3);
+			}
+		}
 		return trimmed.startsWith("#") ? trimmed : "#" + trimmed;
 	}
 
