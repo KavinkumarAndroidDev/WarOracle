@@ -43,14 +43,32 @@
         </encoder>
     </appender>
 
-    <!-- Log Levels Configuration -->
-    <logger name="com.kkdev.waroracle" level="DEBUG" />
+    <!-- 3. Async Appenders for Non-Blocking Production Performance -->
+    <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="CONSOLE" />
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+    </appender>
+
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="ROLLING_FILE" />
+        <queueSize>2048</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+    </appender>
+
+    <!-- Log Levels Configuration: INFO by default in production, configurable via LOG_LEVEL env -->
+    <logger name="com.kkdev.waroracle" level="${LOG_LEVEL:-INFO}" />
     <logger name="org.springframework" level="INFO" />
+    <logger name="com.hazelcast" level="INFO" />
+    <logger name="org.hibernate" level="WARN" />
+    <logger name="com.zaxxer.hikari" level="INFO" />
 
     <!-- Root Logger Configuration -->
     <root level="INFO">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="ROLLING_FILE" />
+        <appender-ref ref="ASYNC_CONSOLE" />
+        <appender-ref ref="ASYNC_FILE" />
     </root>
 
 </configuration>
