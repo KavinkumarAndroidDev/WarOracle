@@ -103,6 +103,24 @@ public class PerformanceModelingService
 		double participationRate = calculateAttackParticipationRate(clanWarLog);
 		double avgStars = calculateAverageStars(clanWarLog);
 		double avgDestruction = calculateAverageDestruction(clanWarLog);
+		int consecutiveWins = calculateConsecutiveWins(clanWarLog);
+
+		double clanTierMultiplier = 1.0;
+		if (avgDestruction >= 98.0)
+		{
+			clanTierMultiplier = 1.40;
+		}
+		else if (avgDestruction >= 95.0)
+		{
+			clanTierMultiplier = 1.25;
+		}
+		else if (avgDestruction >= 90.0)
+		{
+			clanTierMultiplier = 1.10;
+		}
+
+		double winStreakBoost = (Math.min(consecutiveWins, 20) / 20.0) * 0.15;
+		double finalClanTierMultiplier = Math.min(1.65, clanTierMultiplier + winStreakBoost);
 
 		List<PlayerPerformanceModel> playerModels = new ArrayList<>();
 		if (warClan.getMembers() != null)
@@ -117,7 +135,7 @@ public class PerformanceModelingService
 						: Collections.emptyList();
 				Player liveProfile = livePlayerProfiles != null ? livePlayerProfiles.get(member.getTag()) : null;
 
-				playerModels.add(buildPlayerPerformanceModel(member, battles, dbAttacks, liveProfile, attacksPerMember));
+				playerModels.add(buildPlayerPerformanceModel(member, battles, dbAttacks, liveProfile, attacksPerMember, finalClanTierMultiplier));
 			}
 		}
 
@@ -129,6 +147,8 @@ public class PerformanceModelingService
 				.attackParticipationRate(participationRate)
 				.avgStarsPerWar(avgStars)
 				.avgDestructionPerWar(avgDestruction)
+				.clanTierMultiplier(finalClanTierMultiplier)
+				.estimatedConsecutiveWins(consecutiveWins)
 				.players(playerModels)
 				.build();
 	}
@@ -139,6 +159,17 @@ public class PerformanceModelingService
 			List<WarAttackEntity> dbWarAttacks,
 			Player liveProfile,
 			int attacksPerMember)
+	{
+		return buildPlayerPerformanceModel(member, battleLogs, dbWarAttacks, liveProfile, attacksPerMember, 1.0);
+	}
+
+	public PlayerPerformanceModel buildPlayerPerformanceModel(
+			WarMember member,
+			List<PlayerBattleLogItem> battleLogs,
+			List<WarAttackEntity> dbWarAttacks,
+			Player liveProfile,
+			int attacksPerMember,
+			double clanTierMultiplier)
 	{
 		int attacksMade = (member.getAttacks() != null) ? member.getAttacks().size() : 0;
 		int attacksRemaining = Math.max(0, attacksPerMember - attacksMade);
@@ -165,6 +196,7 @@ public class PerformanceModelingService
 		}
 
 		double offensiveMultiplier = heroEquipmentPowerCalculator.calculateOffensiveMultiplier(liveProfile);
+		offensiveMultiplier = Math.min(1.65, offensiveMultiplier * clanTierMultiplier);
 
 		Map<Integer, MatchupStarProbability> matchupProbabilities = calculateMatchupProbabilities(
 				member.getTownhallLevel(),
@@ -414,6 +446,28 @@ public class PerformanceModelingService
 		}
 
 		return (warCount > 0) ? (totalDest / warCount) : 0.0;
+	}
+
+	private int calculateConsecutiveWins(ClanWarLogResponse warLog)
+	{
+		if (warLog == null || warLog.getItems() == null || warLog.getItems().isEmpty())
+		{
+			return 0;
+		}
+
+		int streak = 0;
+		for (ClanWarLogItem item : warLog.getItems())
+		{
+			if ("win".equalsIgnoreCase(item.getResult()))
+			{
+				streak++;
+			}
+			else
+			{
+				break;
+			}
+		}
+		return streak;
 	}
 
 	private static class WeightedAttackSample

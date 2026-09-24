@@ -48,6 +48,19 @@ class GlobalExceptionHandlerTest
     }
 
     @Test
+    void testHandleClashApiExceptionWarAlreadyEnded()
+    {
+        ClashApiException ex = new ClashApiException(ErrorCodes.WAR_ALREADY_ENDED);
+        ResponseEntity<ApiResponse> response = exceptionHandler.handleClashApiException(ex);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("FAILED", response.getBody().getStatus());
+        assertEquals(ErrorCodes.WAR_ALREADY_ENDED.getErrorCode(), response.getBody().getErrorcode());
+        assertNotNull(response.getBody().getTraceId());
+    }
+
+    @Test
     void testHandleValidationException()
     {
         MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);

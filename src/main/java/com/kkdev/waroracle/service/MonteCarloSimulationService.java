@@ -69,10 +69,13 @@ public class MonteCarloSimulationService
 			int oStars = sumStars(homeBases);
 			double oDest = avgDestruction(homeBases);
 
+			double hDestRounded = Math.round(hDest * 100.0) / 100.0;
+			double oDestRounded = Math.round(oDest * 100.0) / 100.0;
+
 			homeStars[i] = hStars;
-			homeDestruction[i] = hDest;
+			homeDestruction[i] = hDestRounded;
 			opponentStars[i] = oStars;
-			opponentDestruction[i] = oDest;
+			opponentDestruction[i] = oDestRounded;
 
 			if (hStars > oStars)
 			{
@@ -84,17 +87,17 @@ public class MonteCarloSimulationService
 			}
 			else
 			{
-				if (hDest > oDest)
+				if (hDestRounded > oDestRounded)
 				{
 					outcomes[i] = 1;
 				}
-				else if (hDest < oDest)
+				else if (hDestRounded < oDestRounded)
 				{
 					outcomes[i] = -1;
 				}
 				else
 				{
-					outcomes[i] = 0;
+					outcomes[i] = 0; // True draw — equal stars and equal destruction at CoC precision
 				}
 			}
 		});
@@ -128,12 +131,17 @@ public class MonteCarloSimulationService
 				effectiveTeamSize,
 				lossProb);
 
+		String verdict = determineVerdict(winProb, lossProb, drawProb);
+		String dataConfidence = calculateDataConfidence(homePlayers, opponentPlayers);
+
 		long executionTime = System.currentTimeMillis() - startTime;
-		log.info("Monte Carlo simulation completed in {} ms. Win: {}%, Loss: {}%, Draw: {}%",
+		log.info("Monte Carlo simulation completed in {} ms. Win: {}%, Loss: {}%, Draw: {}%, Verdict: {}, Confidence: {}",
 				executionTime,
 				String.format("%.2f", winProb * 100),
 				String.format("%.2f", lossProb * 100),
-				String.format("%.2f", drawProb * 100));
+				String.format("%.2f", drawProb * 100),
+				verdict,
+				dataConfidence);
 
 		return SimulationResult.builder()
 				.warState(model.getWarState())
@@ -143,10 +151,84 @@ public class MonteCarloSimulationService
 				.winProbability(winProb)
 				.lossProbability(lossProb)
 				.drawProbability(drawProb)
+				.verdict(verdict)
+				.dataConfidence(dataConfidence)
 				.iterationsRun(iterations)
 				.executionTimeMillis(executionTime)
 				.performanceModel(model)
 				.build();
+	}
+
+	private String determineVerdict(double winProb, double lossProb, double drawProb)
+	{
+		if (drawProb >= 0.40)
+		{
+			return "DRAW";
+		}
+		if (Math.abs(winProb - lossProb) < 0.10)
+		{
+			return "TOO_CLOSE";
+		}
+		if (winProb > lossProb)
+		{
+			return "HOME_WIN";
+		}
+		return "OPPONENT_WIN";
+	}
+
+	private String calculateDataConfidence(List<PlayerPerformanceModel> homePlayers, List<PlayerPerformanceModel> oppPlayers)
+	{
+		long totalSamples = 0;
+		int matchupCount = 0;
+
+		if (homePlayers != null)
+		{
+			for (PlayerPerformanceModel p : homePlayers)
+			{
+				if (p.getMatchupProbabilities() != null)
+				{
+					for (MatchupStarProbability m : p.getMatchupProbabilities().values())
+					{
+						totalSamples += m.getSampleCount();
+						matchupCount++;
+					}
+				}
+			}
+		}
+
+		if (oppPlayers != null)
+		{
+			for (PlayerPerformanceModel p : oppPlayers)
+			{
+				if (p.getMatchupProbabilities() != null)
+				{
+					for (MatchupStarProbability m : p.getMatchupProbabilities().values())
+					{
+						totalSamples += m.getSampleCount();
+						matchupCount++;
+					}
+				}
+			}
+		}
+
+		if (matchupCount == 0)
+		{
+			return "LOW";
+		}
+
+		double avgSamplesPerMatchup = (double) totalSamples / matchupCount;
+		if (avgSamplesPerMatchup >= 15.0)
+		{
+			return "HIGH";
+		}
+		else if (avgSamplesPerMatchup >= 5.0)
+		{
+			return "MEDIUM";
+		}
+		else
+		{
+			return "LOW";
+		}
 	}
 
 	private SimulatedBase[] initBases(List<PlayerPerformanceModel> players, int size)
@@ -180,40 +262,61 @@ public class MonteCarloSimulationService
 	{
 		ThreadLocalRandom random = ThreadLocalRandom.current();
 
+		// Wave 1: Primary attacks across active roster
 		for (PlayerPerformanceModel attacker : attackers)
 		{
 			int attacksToUse = attacker.getAttacksRemaining();
-			if (attacksToUse <= 0)
+			if (attacksToUse >= 1)
 			{
-				continue;
-			}
-
-			for (int attackNum = 1; attackNum <= attacksToUse; attackNum++)
-			{
-				if (random.nextDouble() > clanParticipationRate)
+				if (random.nextDouble() <= clanParticipationRate)
 				{
-					continue;
-				}
-
-				int targetIndex = selectTargetBase(attacker, defenderBases, attackNum, random);
-				if (targetIndex < 0 || targetIndex >= defenderBases.length)
-				{
-					continue;
-				}
-
-				SimulatedBase target = defenderBases[targetIndex];
-				AttackResult result = executeAttack(attacker, target, random);
-
-				if (result.stars > target.bestStars)
-				{
-					target.bestStars = result.stars;
-					target.bestDestruction = result.destruction;
-				}
-				else if (result.stars == target.bestStars && result.destruction > target.bestDestruction)
-				{
-					target.bestDestruction = result.destruction;
+					int targetIndex = selectTargetBase(attacker, defenderBases, 1, random);
+					if (targetIndex >= 0 && targetIndex < defenderBases.length)
+					{
+						SimulatedBase target = defenderBases[targetIndex];
+						AttackResult result = executeAttack(attacker, target, random);
+						applyAttackResult(target, result);
+					}
 				}
 			}
+		}
+
+		// Wave 2+: Coordinated clean-up attacks on uncleaned bases (0★ -> 1★ -> 2★)
+		if (attacksPerMember > 1)
+		{
+			for (int wave = 2; wave <= attacksPerMember; wave++)
+			{
+				for (PlayerPerformanceModel attacker : attackers)
+				{
+					int attacksToUse = attacker.getAttacksRemaining();
+					if (attacksToUse >= wave)
+					{
+						if (random.nextDouble() <= clanParticipationRate)
+						{
+							int targetIndex = selectTargetBase(attacker, defenderBases, wave, random);
+							if (targetIndex >= 0 && targetIndex < defenderBases.length)
+							{
+								SimulatedBase target = defenderBases[targetIndex];
+								AttackResult result = executeAttack(attacker, target, random);
+								applyAttackResult(target, result);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private void applyAttackResult(SimulatedBase target, AttackResult result)
+	{
+		if (result.stars > target.bestStars)
+		{
+			target.bestStars = result.stars;
+			target.bestDestruction = result.destruction;
+		}
+		else if (result.stars == target.bestStars && result.destruction > target.bestDestruction)
+		{
+			target.bestDestruction = result.destruction;
 		}
 	}
 
@@ -239,6 +342,15 @@ public class MonteCarloSimulationService
 						return idx;
 					}
 				}
+			}
+		}
+		else
+		{
+			// Second attack / clean-up: aggressively prioritize the lowest-starred uncompleted bases
+			int cleanupTarget = findBestCleanupTarget(defenderBases, attacker);
+			if (cleanupTarget != -1)
+			{
+				return cleanupTarget;
 			}
 		}
 
@@ -278,6 +390,33 @@ public class MonteCarloSimulationService
 		}
 
 		return mirrorIndex;
+	}
+
+	private int findBestCleanupTarget(SimulatedBase[] bases, PlayerPerformanceModel attacker)
+	{
+		int bestIdx = -1;
+		int lowestStars = 4;
+		int bestThDiff = -99;
+
+		for (int i = 0; i < bases.length; i++)
+		{
+			SimulatedBase base = bases[i];
+			if (base.bestStars < 3)
+			{
+				int thDiff = attacker.getTownHallLevel() - base.townHallLevel;
+				if (thDiff >= -1)
+				{
+					if (base.bestStars < lowestStars || (base.bestStars == lowestStars && thDiff > bestThDiff))
+					{
+						lowestStars = base.bestStars;
+						bestThDiff = thDiff;
+						bestIdx = i;
+					}
+				}
+			}
+		}
+
+		return bestIdx;
 	}
 
 	private AttackResult executeAttack(

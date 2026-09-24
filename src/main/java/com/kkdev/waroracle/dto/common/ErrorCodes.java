@@ -14,7 +14,8 @@ public enum ErrorCodes
 	METHOD_NOT_ALLOWED(1008, "HTTP request method is not supported for this endpoint"),
 	UNSUPPORTED_MEDIA_TYPE(1009, "Unsupported media type format"),
 	RESOURCE_NOT_FOUND(1010, "Requested endpoint resource was not found"),
-	DATABASE_ERROR(1011, "A database error occurred while processing your request");
+	DATABASE_ERROR(1011, "A database error occurred while processing your request"),
+	WAR_ALREADY_ENDED(1013, "War has ended. Simulation is only available for preparation or active battle days");
 
 	private final Integer errorCode;
 	private final String errorDescription;

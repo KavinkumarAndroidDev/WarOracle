@@ -283,6 +283,7 @@ public class GlobalExceptionHandler
             case CLAN_WAR_LOG_PRIVATE:
                 return HttpStatus.FORBIDDEN;
             case CLASH_API_BAD_REQUEST:
+            case WAR_ALREADY_ENDED:
                 return HttpStatus.BAD_REQUEST;
             case CLASH_API_UNAUTHORIZED:
                 return HttpStatus.UNAUTHORIZED;

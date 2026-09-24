@@ -163,6 +163,11 @@ public class WarOracleService
 			throw new ClashApiException(ErrorCodes.CLAN_NOT_FOUND);
 		}
 
+		if ("warEnded".equalsIgnoreCase(currentWar.getState()))
+		{
+			throw new ClashApiException(ErrorCodes.WAR_ALREADY_ENDED);
+		}
+
 		return buildPerformanceModelWithWar(request, currentWar);
 	}
 
@@ -176,21 +181,13 @@ public class WarOracleService
 		if (currentWar == null || "notInWar".equalsIgnoreCase(currentWar.getState()))
 		{
 			log.info("Clan {} is not currently in war.", clanTag);
-			return SimulationResult.builder()
-					.warState(currentWar != null ? currentWar.getState() : "notInWar")
-					.message("Clan is not currently in an active or upcoming war.")
-					.currentWar(currentWar)
-					.build();
+			throw new ClashApiException(ErrorCodes.CLAN_NOT_FOUND);
 		}
 
 		if ("warEnded".equalsIgnoreCase(currentWar.getState()))
 		{
-			log.info("War has already ended for clanTag: {}. Returning ended war summary without running simulation.", clanTag);
-			return SimulationResult.builder()
-					.warState("warEnded")
-					.message("War has already ended. Simulation is only applicable for active or upcoming wars. Start next war to run simulation.")
-					.currentWar(currentWar)
-					.build();
+			log.info("War has already ended for clanTag: {}. Rejecting simulation request.", clanTag);
+			throw new ClashApiException(ErrorCodes.WAR_ALREADY_ENDED);
 		}
 
 		String warId = warPersistenceService.persistClanAndWar(currentWar);

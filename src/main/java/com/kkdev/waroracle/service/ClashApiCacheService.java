@@ -1,5 +1,9 @@
 package com.kkdev.waroracle.service;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -133,12 +137,65 @@ public class ClashApiCacheService
 		try
 		{
 			String json = jsonMapper.writeValueAsString(war);
-			long ttlSeconds = "notInWar".equalsIgnoreCase(war.getState()) ? 15 : 60;
+			long ttlSeconds;
+			if ("warEnded".equalsIgnoreCase(war.getState()))
+			{
+				ttlSeconds = 15;
+			}
+			else if ("notInWar".equalsIgnoreCase(war.getState()))
+			{
+				ttlSeconds = 15;
+			}
+			else
+			{
+				long remainingSeconds = calculateWarRemainingSeconds(war.getEndTime());
+				if (remainingSeconds <= 0)
+				{
+					ttlSeconds = 5;
+				}
+				else if (remainingSeconds < 60)
+				{
+					ttlSeconds = Math.max(5, remainingSeconds);
+				}
+				else
+				{
+					ttlSeconds = 60;
+				}
+			}
+
 			currentWarMap.put(clanTag, json, ttlSeconds, TimeUnit.SECONDS);
 		}
 		catch (Exception e)
 		{
 			log.warn("Failed to serialize current war for Hazelcast cache", e);
+		}
+	}
+
+	private long calculateWarRemainingSeconds(String endTimeStr)
+	{
+		if (endTimeStr == null || endTimeStr.trim().isEmpty())
+		{
+			return 60;
+		}
+		try
+		{
+			String cleaned = endTimeStr.trim();
+			Instant endInstant;
+			if (cleaned.contains("."))
+			{
+				endInstant = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS'Z'").withZone(ZoneOffset.UTC).parse(cleaned, Instant::from);
+			}
+			else
+			{
+				endInstant = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC).parse(cleaned, Instant::from);
+			}
+
+			long secondsRemaining = Duration.between(Instant.now(), endInstant).getSeconds();
+			return Math.max(0, secondsRemaining);
+		}
+		catch (Exception e)
+		{
+			return 60;
 		}
 	}
 

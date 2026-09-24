@@ -20,5 +20,7 @@ public class ClanPerformanceModel
     private double attackParticipationRate;
     private double avgStarsPerWar;
     private double avgDestructionPerWar;
+    private double clanTierMultiplier;
+    private int estimatedConsecutiveWins;
     private List<PlayerPerformanceModel> players;
 }

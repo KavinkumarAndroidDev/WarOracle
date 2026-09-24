@@ -22,8 +22,9 @@ public class SimulationResult
 	private double winProbability;
 	private double lossProbability;
 	private double drawProbability;
+	private String verdict;
+	private String dataConfidence;
 	private int iterationsRun;
 	private long executionTimeMillis;
 	private WarPerformanceModel performanceModel;
 }
-
