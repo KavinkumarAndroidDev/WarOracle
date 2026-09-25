@@ -2,10 +2,10 @@ package com.kkdev.waroracle.dto.simulation;
 
 public enum SimulationQuality
 {
-    LOW(10_000),
-    MEDIUM(50_000),
-    HIGH(100_000),
-    MAX(250_000);
+    LOW(5_000),
+    MEDIUM(20_000),
+    HIGH(50_000),
+    MAX(100_000);
 
     private final int iterations;
 

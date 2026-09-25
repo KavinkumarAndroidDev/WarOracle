@@ -58,7 +58,7 @@ public class PerformanceModelingService
 	{
 		log.info("Building hybrid war performance model for war state: {}", currentWar.getState());
 
-		SimulationQuality simulationQuality = (quality != null) ? quality : SimulationQuality.HIGH;
+		SimulationQuality simulationQuality = (quality != null) ? quality : SimulationQuality.MEDIUM;
 
 		ClanPerformanceModel homeClanModel = buildClanPerformanceModel(
 				currentWar.getClan(),

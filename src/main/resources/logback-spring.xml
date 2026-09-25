@@ -31,10 +31,10 @@
             <fileNamePattern>${LOGS_DIR}/archived/${LOG_FILE_NAME}-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
             <!-- Max size per log file before splitting (10MB spec) -->
             <maxFileSize>10MB</maxFileSize>
-            <!-- Maintain logs for up to 30 days -->
-            <maxHistory>30</maxHistory>
-            <!-- Cap total logs size on disk to 1GB -->
-            <totalSizeCap>1GB</totalSizeCap>
+            <!-- Maintain logs for up to 7 days -->
+            <maxHistory>7</maxHistory>
+            <!-- Cap total logs size on disk to 300MB -->
+            <totalSizeCap>300MB</totalSizeCap>
         </rollingPolicy>
 
         <encoder>

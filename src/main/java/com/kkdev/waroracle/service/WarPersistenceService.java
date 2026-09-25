@@ -6,8 +6,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -123,24 +127,40 @@ public class WarPersistenceService
 				opponentClan != null ? opponentClan.getTag() : "UNKNOWN",
 				currentWar.getPreparationStartTime());
 
-		ClanWarEntity warEntity = ClanWarEntity.builder()
-				.warId(warId)
-				.clanTag(homeClan.getTag())
-				.opponentTag(opponentClan != null ? opponentClan.getTag() : null)
-				.state(currentWar.getState())
-				.teamSize(currentWar.getTeamSize())
-				.attacksPerMember(currentWar.getAttacksPerMember())
-				.battleModifier(currentWar.getBattleModifier())
-				.preparationStartTime(currentWar.getPreparationStartTime())
-				.startTime(currentWar.getStartTime())
-				.endTime(currentWar.getEndTime())
-				.clanStars(homeClan.getStars())
-				.clanDestruction(BigDecimal.valueOf(homeClan.getDestructionPercentage()))
-				.opponentStars(opponentClan != null ? opponentClan.getStars() : 0)
-				.opponentDestruction(BigDecimal.valueOf(opponentClan != null ? opponentClan.getDestructionPercentage() : 0.0))
-				.createdAt(LocalDateTime.now())
-				.updatedAt(LocalDateTime.now())
-				.build();
+		Optional<ClanWarEntity> existingWarOpt = clanWarRepository.findById(warId);
+
+		ClanWarEntity warEntity;
+		if (existingWarOpt.isPresent())
+		{
+			warEntity = existingWarOpt.get();
+			warEntity.setState(currentWar.getState());
+			warEntity.setClanStars(homeClan.getStars());
+			warEntity.setClanDestruction(BigDecimal.valueOf(homeClan.getDestructionPercentage()));
+			warEntity.setOpponentStars(opponentClan != null ? opponentClan.getStars() : 0);
+			warEntity.setOpponentDestruction(BigDecimal.valueOf(opponentClan != null ? opponentClan.getDestructionPercentage() : 0.0));
+			warEntity.setUpdatedAt(LocalDateTime.now());
+		}
+		else
+		{
+			warEntity = ClanWarEntity.builder()
+					.warId(warId)
+					.clanTag(homeClan.getTag())
+					.opponentTag(opponentClan != null ? opponentClan.getTag() : null)
+					.state(currentWar.getState())
+					.teamSize(currentWar.getTeamSize())
+					.attacksPerMember(currentWar.getAttacksPerMember())
+					.battleModifier(currentWar.getBattleModifier())
+					.preparationStartTime(currentWar.getPreparationStartTime())
+					.startTime(currentWar.getStartTime())
+					.endTime(currentWar.getEndTime())
+					.clanStars(homeClan.getStars())
+					.clanDestruction(BigDecimal.valueOf(homeClan.getDestructionPercentage()))
+					.opponentStars(opponentClan != null ? opponentClan.getStars() : 0)
+					.opponentDestruction(BigDecimal.valueOf(opponentClan != null ? opponentClan.getDestructionPercentage() : 0.0))
+					.createdAt(LocalDateTime.now())
+					.updatedAt(LocalDateTime.now())
+					.build();
+		}
 
 		clanWarRepository.save(warEntity);
 
@@ -222,11 +242,19 @@ public class WarPersistenceService
 
 	private void persistWarAttacks(String warId, CurrentWar currentWar)
 	{
-		warAttackRepository.deleteByWarId(warId);
+		List<WarAttackEntity> existingAttacks = warAttackRepository.findByWarId(warId);
+		Set<String> existingKeys = new HashSet<>();
+		if (existingAttacks != null)
+		{
+			for (WarAttackEntity a : existingAttacks)
+			{
+				existingKeys.add(buildAttackKey(a.getAttackerTag(), a.getAttackOrder(), a.getDefenderTag()));
+			}
+		}
 
-		List<WarAttackEntity> attackEntities = new ArrayList<>();
+		List<WarAttackEntity> attackEntitiesToInsert = new ArrayList<>();
 
-		Map<String, Integer> homeMemberThMap = new java.util.HashMap<>();
+		Map<String, Integer> homeMemberThMap = new HashMap<>();
 		if (currentWar.getClan() != null && currentWar.getClan().getMembers() != null)
 		{
 			for (WarMember m : currentWar.getClan().getMembers())
@@ -235,7 +263,7 @@ public class WarPersistenceService
 			}
 		}
 
-		Map<String, Integer> oppMemberThMap = new java.util.HashMap<>();
+		Map<String, Integer> oppMemberThMap = new HashMap<>();
 		if (currentWar.getOpponent() != null && currentWar.getOpponent().getMembers() != null)
 		{
 			for (WarMember m : currentWar.getOpponent().getMembers())
@@ -252,22 +280,27 @@ public class WarPersistenceService
 				{
 					for (WarAttack attack : member.getAttacks())
 					{
-						int attackerTh = member.getTownhallLevel();
-						int defenderTh = oppMemberThMap.getOrDefault(attack.getDefenderTag(), attackerTh);
-						attackEntities.add(WarAttackEntity.builder()
-								.warId(warId)
-								.attackerTag(attack.getAttackerTag())
-								.attackerTh(attackerTh)
-								.defenderTag(attack.getDefenderTag())
-								.defenderTh(defenderTh)
-								.thDiff(attackerTh - defenderTh)
-								.stars(attack.getStars())
-								.destructionPercentage(BigDecimal.valueOf(attack.getDestructionPercentage()))
-								.attackOrder(attack.getOrder())
-								.durationSeconds(attack.getDuration())
-								.isClanAttack(true)
-								.createdAt(LocalDateTime.now())
-								.build());
+						String key = buildAttackKey(attack.getAttackerTag(), attack.getOrder(), attack.getDefenderTag());
+						if (!existingKeys.contains(key))
+						{
+							int attackerTh = member.getTownhallLevel();
+							int defenderTh = oppMemberThMap.getOrDefault(attack.getDefenderTag(), attackerTh);
+							attackEntitiesToInsert.add(WarAttackEntity.builder()
+									.warId(warId)
+									.attackerTag(attack.getAttackerTag())
+									.attackerTh(attackerTh)
+									.defenderTag(attack.getDefenderTag())
+									.defenderTh(defenderTh)
+									.thDiff(attackerTh - defenderTh)
+									.stars(attack.getStars())
+									.destructionPercentage(BigDecimal.valueOf(attack.getDestructionPercentage()))
+									.attackOrder(attack.getOrder())
+									.durationSeconds(attack.getDuration())
+									.isClanAttack(true)
+									.createdAt(LocalDateTime.now())
+									.build());
+							existingKeys.add(key);
+						}
 					}
 				}
 			}
@@ -281,32 +314,42 @@ public class WarPersistenceService
 				{
 					for (WarAttack attack : member.getAttacks())
 					{
-						int attackerTh = member.getTownhallLevel();
-						int defenderTh = homeMemberThMap.getOrDefault(attack.getDefenderTag(), attackerTh);
-						attackEntities.add(WarAttackEntity.builder()
-								.warId(warId)
-								.attackerTag(attack.getAttackerTag())
-								.attackerTh(attackerTh)
-								.defenderTag(attack.getDefenderTag())
-								.defenderTh(defenderTh)
-								.thDiff(attackerTh - defenderTh)
-								.stars(attack.getStars())
-								.destructionPercentage(BigDecimal.valueOf(attack.getDestructionPercentage()))
-								.attackOrder(attack.getOrder())
-								.durationSeconds(attack.getDuration())
-								.isClanAttack(false)
-								.createdAt(LocalDateTime.now())
-								.build());
+						String key = buildAttackKey(attack.getAttackerTag(), attack.getOrder(), attack.getDefenderTag());
+						if (!existingKeys.contains(key))
+						{
+							int attackerTh = member.getTownhallLevel();
+							int defenderTh = homeMemberThMap.getOrDefault(attack.getDefenderTag(), attackerTh);
+							attackEntitiesToInsert.add(WarAttackEntity.builder()
+									.warId(warId)
+									.attackerTag(attack.getAttackerTag())
+									.attackerTh(attackerTh)
+									.defenderTag(attack.getDefenderTag())
+									.defenderTh(defenderTh)
+									.thDiff(attackerTh - defenderTh)
+									.stars(attack.getStars())
+									.destructionPercentage(BigDecimal.valueOf(attack.getDestructionPercentage()))
+									.attackOrder(attack.getOrder())
+									.durationSeconds(attack.getDuration())
+									.isClanAttack(false)
+									.createdAt(LocalDateTime.now())
+									.build());
+							existingKeys.add(key);
+						}
 					}
 				}
 			}
 		}
 
-		if (!attackEntities.isEmpty())
+		if (!attackEntitiesToInsert.isEmpty())
 		{
-			warAttackRepository.saveAll(attackEntities);
-			log.debug("Saved {} completed war attacks for warId: {}", attackEntities.size(), warId);
+			warAttackRepository.saveAll(attackEntitiesToInsert);
+			log.debug("Saved {} new completed war attacks for warId: {}", attackEntitiesToInsert.size(), warId);
 		}
+	}
+
+	private String buildAttackKey(String attackerTag, Integer order, String defenderTag)
+	{
+		return (attackerTag != null ? attackerTag : "") + "#" + (order != null ? order : 0) + "#" + (defenderTag != null ? defenderTag : "");
 	}
 
 	public String generateWarId(String homeClanTag, String opponentClanTag, String preparationStartTime)
