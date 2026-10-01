@@ -16,10 +16,10 @@
 
 - [Overview](#-overview)
 - [System Architecture](#-system-architecture)
-- [Core Engines](#-core-engines)
-  - [1. Monte Carlo War Simulation Engine](#1-monte-carlo-war-simulation-engine)
-  - [2. Kuhn-Munkres Strategic War Planner](#2-kuhn-munkres-strategic-war-planner)
-  - [3. Empirical Modeling & Hero Equipment Power](#3-empirical-modeling--hero-equipment-power)
+- [Core Engines & Technical Specifications](#-core-engines)
+  - [1. Monte Carlo War Simulation Engine](docs/MONTE_CARLO_SIMULATION.md)
+  - [2. Kuhn-Munkres Strategic War Planner](docs/WAR_STRATEGY_OPTIMIZATION.md)
+  - [3. Empirical Modeling & Hero Equipment Power](docs/HERO_EQUIPMENT_MODELING.md)
 - [High-Performance JVM Optimizations](#-high-performance-jvm-optimizations)
 - [Tech Stack](#-tech-stack)
 - [REST API Reference](#-rest-api-reference)
@@ -121,6 +121,8 @@ The simulation engine evaluates the stochastic nature of clan wars across thousa
 2. **Wave 2+ (Cleanup Attacks):** Remaining attacks target the lowest-starred enemy bases within the player's viable Town Hall difference threshold ($\Delta \text{TH} \ge -1$).
 3. **Attack Execution:** Probabilities of achieving 0, 1, 2, or 3 stars and destruction percentiles are sampled from pre-calculated empirical matchup distributions adjusted for defender defense ratings.
 
+> 📖 **Deep Dive:** Full mathematical formulation, convergence proofs, and zero-allocation primitive packing are detailed in [**Monte Carlo Engine Specification**](docs/MONTE_CARLO_SIMULATION.md).
+
 ---
 
 ### 2. Kuhn-Munkres Strategic War Planner
@@ -138,6 +140,8 @@ The solver (`KuhnBipartiteOptimizer`) implements the Hungarian algorithm in $O(N
 - **`BALANCED`**: Maximizes total expected clan stars across the entire roster while maintaining cleanup flexibility.
 - **`AGGRESSIVE`**: Encourages top players to hit up or secure early stars on high-value opponent targets to expose cleanup opportunities for the lower roster.
 
+> 📖 **Deep Dive:** Full bipartite graph construction, dual potential vector proofs, and contingency tree logic are detailed in [**War Strategy Optimizer Specification**](docs/WAR_STRATEGY_OPTIMIZATION.md).
+
 ---
 
 ### 3. Empirical Modeling & Hero Equipment Power
@@ -148,6 +152,8 @@ Rather than relying purely on static Town Hall levels, the performance modeling 
 - **Town Hall Deltas:** Maps matchups across normalized discrete offsets:
   $$\Delta \text{TH} \in \{-2, -1, 0, +1, +2\}$$
 - **Historical Attack Normalization:** Calibrates attack participation rates and star probability distributions against recorded clan war history and live battle logs.
+
+> 📖 **Deep Dive:** Bayesian prior blending, exponential time decay half-lives, and hero equipment formulas are detailed in [**Hero & Prior Calibration Specification**](docs/HERO_EQUIPMENT_MODELING.md).
 
 ---
 
