@@ -95,8 +95,8 @@ When simulating an active war (`inWar`):
 ## 5. Statistical Aggregations & Confidence Intervals
 
 Over $N$ Monte Carlo iterations (e.g., 50,000 runs):
-* **Win Probability**: $P_{\text{win}} = \frac{N_{\text{home\_wins}}}{N}$
-* **Loss Probability**: $P_{\text{loss}} = \frac{N_{\text{opp\_wins}}}{N}$
+* **Win Probability**: $P_{\text{win}} = \frac{N_{\text{wins}}}{N}$
+* **Loss Probability**: $P_{\text{loss}} = \frac{N_{\text{losses}}}{N}$
 * **Draw Probability**: $P_{\text{draw}} = \frac{N_{\text{ties}}}{N}$
 * **95% Confidence Interval**:
   * Sorted simulated star distribution $[S_{(1)}, S_{(2)}, \dots, S_{(N)}]$.

@@ -105,10 +105,13 @@ double[][] homeProbs = buildProbTable(homePlayers);
 ### 5.2 Bit-Packed Primitive Attack Results
 Simulated attack results avoid heap allocation by packing 32-bit integer stars and 32-bit integer destruction ($D \times 100$) into a single primitive `long`:
 
-$$\text{EncodedValue} = (\text{Stars} \ll 32) \mid (\lfloor D \cdot 100 \rfloor \ \& \ \text{0xFFFFFFFFL})$$
+$$\text{EncodedValue} = (\text{Stars} \cdot 2^{32}) + \lfloor D \cdot 100 \rfloor$$
 
 ```java
-long encoded = executeAttack(probTable[a], attackerTh[a], defenderTh[t], defRating[t], random);
+// Java bitwise encoding (high 32 bits = stars, low 32 bits = destruction * 100)
+long encoded = ((long) stars << 32) | ((long) Math.round(destruction * 100.0) & 0xFFFFFFFFL);
+
+// Unpacking in hot path:
 int stars = (int) (encoded >>> 32);
 double destruction = (encoded & 0xFFFFFFFFL) / 100.0;
 ```

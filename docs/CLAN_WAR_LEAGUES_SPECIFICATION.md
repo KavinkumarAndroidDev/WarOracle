@@ -177,17 +177,17 @@
 
 ### 4.2 Individual Medal Yield by Stars Scored
 
-$$\text{Medal Percentage} = \min\left(100\%, 20\% + (\text{Stars Scored} \times 10\%)\right)$$
+$$\text{Medal Percentage} = \min\left(100, \, 20 + (\text{Stars Scored} \times 10)\right)\%$$
 
-* $0\text{ stars} \rightarrow 20\%$
-* $1\text{ star} \rightarrow 30\%$
-* $2\text{ stars} \rightarrow 40\%$
-* $3\text{ stars} \rightarrow 50\%$
-* $4\text{ stars} \rightarrow 60\%$
-* $5\text{ stars} \rightarrow 70\%$
-* $6\text{ stars} \rightarrow 80\%$
-* $7\text{ stars} \rightarrow 90\%$
-* $\ge 8\text{ stars} \rightarrow 100\%$
+* **0 stars** $\rightarrow 20\%$ of clan medal yield
+* **1 star** $\rightarrow 30\%$ of clan medal yield
+* **2 stars** $\rightarrow 40\%$ of clan medal yield
+* **3 stars** $\rightarrow 50\%$ of clan medal yield
+* **4 stars** $\rightarrow 60\%$ of clan medal yield
+* **5 stars** $\rightarrow 70\%$ of clan medal yield
+* **6 stars** $\rightarrow 80\%$ of clan medal yield
+* **7 stars** $\rightarrow 90\%$ of clan medal yield
+* **$\ge 8$ stars** $\rightarrow 100\%$ of clan medal yield (Full yield)
 
 ---
 

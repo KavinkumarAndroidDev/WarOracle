@@ -82,7 +82,9 @@ WarOracle uses a **Hybrid Relational + JSON Document** model powered by MySQL 8.
 ### 3.1 Deterministic War ID
 Supercell does not issue persistent global war identifiers. WarOracle generates a deterministic, collision-resistant surrogate key:
 
-$$\text{WarID} = \text{SHA256}(\text{HomeClanTag} + \text{"\_"} + \text{OpponentClanTag} + \text{"\_"} + \text{PreparationStartTime})[0 \dots 32]$$
+```text
+WarID = SHA256(HomeClanTag + "_" + OpponentClanTag + "_" + PreparationStartTime)[0..32]
+```
 
 This guarantees that repeat simulations on the same war record cleanly update the existing `clan_wars` and `war_attacks` rows without creating duplicates.
 
