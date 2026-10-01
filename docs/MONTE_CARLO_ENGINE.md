@@ -1,5 +1,7 @@
 # WarOracle Monte Carlo Predictive Modeling Engine
 
+> **Note:** For the full mathematical formulation, discrete probability densities, and zero-allocation JVM implementation details, see [**Monte Carlo Simulation Specification**](MONTE_CARLO_SIMULATION.md) and [**Hero Equipment Modeling**](HERO_EQUIPMENT_MODELING.md).
+
 ## 1. Mathematical & Statistical Foundations
 
 The WarOracle predictive engine estimates the outcome of a Clan War using **Monte Carlo simulation calibrated with Bayesian Dirichlet-Multinomial priors, Dynamic Hero & Equipment Scaling, and Hybrid Evidence Fusion**.

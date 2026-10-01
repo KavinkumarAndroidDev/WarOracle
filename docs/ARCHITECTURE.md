@@ -1,7 +1,7 @@
 # WarOracle Backend Architecture & System Reference
 
 ## 1. Executive Summary & Purpose
-**WarOracle** is an advanced Clash of Clans clan war predictive modeling platform. It fuses live Supercell API data (current player offensive capabilities, hero/equipment levels, clan war logs, battle logs, and active war rosters) with historical database telemetry to simulate thousands of war outcomes, computing win/loss/draw probabilities, expected star totals, and 95% confidence intervals.
+**WarOracle** is an advanced Clash of Clans clan war predictive modeling and tactical intelligence platform. It fuses live Supercell API data (current player offensive capabilities, hero/equipment levels, clan war logs, battle logs, and active war rosters) with historical database telemetry to simulate thousands of war outcomes and calculate optimal player target assignments.
 
 ---
 
@@ -18,18 +18,24 @@
 │                                APPLICATION LAYER                                       │
 │                                                                                        │
 │   ┌────────────────────────────────────────────────────────────────────────────────┐   │
-│   │ Controller Layer: PlayerController                                             │   │
+│   │ Controller Layer:                                                              │   │
+│   │  • PlayerController (Player/Clan Stats, Modeling, Simulation)                  │   │
+│   │  • WarStrategyController (Kuhn-Munkres Optimal War Plan Generation)             │   │
+│   │  • FeedbackController (User Feedback & Accuracy Telemetry)                     │   │
 │   └───────────────────────────────────────┬────────────────────────────────────────┘   │
 │                                           │                                            │
 │   ┌───────────────────────────────────────▼────────────────────────────────────────┐   │
 │   │ Orchestration & Domain Services:                                               │   │
 │   │  • WarOracleService (Workflow Orchestrator)                                    │   │
+│   │  • WarStrategyServiceImpl (Strategic War Planner & Contingency Generator)      │   │
+│   │  • KuhnBipartiteOptimizer (Hungarian Maximum-Weight Bipartite Solver)          │   │
 │   │  • PerformanceModelingService (Bayesian & Hero Equipment Feature Extractor)    │   │
-│   │  • MonteCarloSimulationService (Multi-Threaded Trial Engine)                   │   │
+│   │  • MonteCarloSimulationService (Isolated ForkJoinPool Trial Engine)            │   │
 │   │  • HeroEquipmentPowerCalculator (Offensive Scaling Factor)                     │   │
 │   │  • EmpiricalPriorCalibrationService (Dynamic Bayesian Priors)                  │   │
 │   │  • ClashApiCacheService (Hazelcast Cache Gateway)                              │   │
 │   │  • WarPersistenceService (Data Ingestion & Store)                              │   │
+│   │  • FeedbackServiceImpl (Feedback Store)                                        │   │
 │   └───────────────┬───────────────────────┬────────────────────────┬───────────────┘   │
 └───────────────────┼───────────────────────┼────────────────────────┼───────────────────┘
                     │                       │                        │
@@ -41,6 +47,7 @@
 │ • Live Player Profile & Gear  │ │ • API Response TTL│ │ • clan_wars (Historical War Log│
 │ • Live Battle Logs (Last ~25) │ │ • Global Priors   │ │ • war_attacks (Real War Telemetry│
 │ • Live Current War Roster     │ │ • Active Sessions │ │ • simulation_runs (Audit Trail)│
+│                               │ │                   │ │ • war_feedback (User Feedback) │
 └───────────────────────────────┘ └───────────────────┘ └────────────────────────────────┘
 ```
 
@@ -49,30 +56,32 @@
 ## 3. Layered Design & Separation of Concerns
 
 ### 3.1 Controller Layer (`com.kkdev.waroracle.controller`)
-* **`PlayerController`**: Exposes REST endpoints for player preview statistics (`GET /warOracle/{playerTag}`), clan preview statistics (`GET /warOracle/clan/{clanTag}`), and war simulation execution (`POST /warOracle/simulate`).
-* Validates inputs with Jakarta Bean Validation and returns standard `ApiResponse<T>` envelopes.
+* **`PlayerController`**: Exposes REST endpoints for player preview statistics (`GET /warOracle/{playerTag}`), clan preview statistics (`GET /warOracle/clan/{clanTag}`), empirical performance modeling (`POST /warOracle/performance-model`), quality options (`GET /warOracle/qualities`), and war simulation execution (`POST /warOracle/simulate`).
+* **`WarStrategyController`**: Exposes strategy generation endpoints (`POST /warOracle/strategy/plan`) implementing Kuhn-Munkres matching under `SAFE`, `BALANCED`, and `AGGRESSIVE` doctrines.
+* **`FeedbackController`**: Handles user feedback, comments, and bug reporting (`POST /warOracle/feedback`).
+* Validates inputs with Jakarta Bean Validation and returns standard `ApiResponse<T>` envelopes with distributed trace IDs via `LogTagInterceptor`.
 
 ### 3.2 Service Layer (`com.kkdev.waroracle.service`)
-* **`WarOracleService`**: Main orchestrator. Coordinates player profile retrieval, clan war state resolution, parallel battle log mining, simulation execution, and persistence.
+* **`WarOracleService`**: Main orchestrator. Coordinates player profile retrieval, clan war state resolution, parallel battle log mining via `CompletableFuture`, simulation execution, and persistence.
+* **`WarStrategyServiceImpl` & `KuhnBipartiteOptimizer`**: Solves optimal 1-to-1 attacker assignments in $O(N^3)$ and builds second-wave contingency cleanup plans.
 * **`PerformanceModelingService`**: Converts live player stats, hero/equipment levels, live battle logs, and historical war attacks into a unified statistical matchup matrix.
-* **`HeroEquipmentPowerCalculator`**: Computes $R_{\text{hero}}$ and $R_{\text{gear}}$ to calculate offensive power multipliers $M_{\text{offense}} \in [0.60, 1.00]$.
+* **`HeroEquipmentPowerCalculator`**: Computes hero and equipment power ratios to calculate offensive power multipliers $\Omega_{\text{player}} \in [0.60, 1.00]$.
 * **`EmpiricalPriorCalibrationService`**: Periodically aggregates global war attack outcomes from MySQL and caches empirical probability distributions in Hazelcast.
 * **`ClashApiCacheService`**: Manages Hazelcast distributed caching for Supercell API responses (3-minute sliding TTL for player/clan/logs, 1-minute TTL for active wars).
-* **`MonteCarloSimulationService`**: High-performance multi-threaded trial simulator running 10,000 to 250,000 randomized iterations per war.
+* **`MonteCarloSimulationService`**: High-performance multi-threaded trial simulator running 5,000 to 100,000 randomized iterations per war on an isolated `ForkJoinPool`.
 * **`WarPersistenceService`**: Transactional data management. Handles player snapshots, clan war logs, individual war attack ingestion, and simulation run audits.
 
-### 3.3 Client Layer (`com.kkdev.waroracle.client`)
-* **`ClashApiTokenProvider`**: High-availability token manager. Supports multiple API keys via `CLASH_API_TOKENS` (comma/semicolon/newline separated), balances requests across healthy tokens in round-robin fashion, and applies automatic 30-second cooldown isolation when any token encounters HTTP 429 Rate Limits.
-* **`ClashApiClient`**: Built on Spring Boot's modern `RestClient` with Hazelcast cache-aside integration. Dynamically injects rotated Bearer JWT credentials, triggers 429 failover telemetry, and maps Supercell response codes into structured domain exceptions.
+### 3.3 Client Layer (`com.kkdev.waroracle.service`)
+* **`ClashApiCacheService`**: Built on Spring Boot's modern `RestClient` with Hazelcast cache-aside integration and multi-token rotation fallback.
 
 ### 3.4 Repository Layer (`com.kkdev.waroracle.repository`)
-* Standard Spring Data JPA interfaces (`ClanRepository`, `ClanWarRepository`, `WarAttackRepository`, `PlayerSnapshotRepository`, `SimulationRunRepository`).
+* Standard Spring Data JPA interfaces (`ClanRepository`, `ClanWarRepository`, `WarAttackRepository`, `PlayerSnapshotRepository`, `SimulationRunRepository`, `FeedbackRepository`).
 
 ---
 
 ## 4. Configuration & External Environment Variables
 
-WarOracle supports full twelve-factor external configuration via environment variables:
+WarOracle supports twelve-factor external configuration via environment variables:
 
 | Environment Variable | Default Value / Fallback | Description |
 |---|---|---|

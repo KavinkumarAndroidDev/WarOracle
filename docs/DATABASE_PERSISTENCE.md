@@ -62,6 +62,17 @@ WarOracle uses a **Hybrid Relational + JSON Document** model powered by MySQL 8.
 │    score_distribution_json(JSON)│                 │    snapshot_time (TIMESTAMP)    │
 │    created_at (TIMESTAMP)       │                 └─────────────────────────────────┘
 └─────────────────────────────────┘
+
+┌─────────────────────────────────┐
+│          war_feedback           │
+├─────────────────────────────────┤
+│ PK id (BIGINT AUTO_INC)         │
+│    category (VARCHAR 50)        │
+│    message (TEXT)               │
+│    contact (VARCHAR 100)        │
+│    client_ip (VARCHAR 45)       │
+│    created_at (TIMESTAMP)       │
+└─────────────────────────────────┘
 ```
 
 ---
@@ -80,24 +91,8 @@ This guarantees that repeat simulations on the same war record cleanly update th
 * This tracks the player's progression curve over time, contextualizing their historical attack performance against their base strength at that exact moment.
 
 ### 3.3 War Attack Data Ingestion (Ground Truth)
-* Every individual attack in `CurrentWar` (Attacker Tag & TH, Defender Tag & TH, $\Delta TH$, Stars, Destruction %, Duration) is ingested into `war_attacks`.
+* Every individual attack in `CurrentWar` (Attacker Tag & TH, Defender Tag & TH, $\Delta \text{TH}$, Stars, Destruction %, Duration) is ingested into `war_attacks`.
 * This data feeds the **empirical posterior distribution**, enabling WarOracle to refine prior matchup probabilities with real match data.
 
----
-
-## 4. SQL Scripts & Migration Management
-
-All database scripts are kept version-controlled inside the Java resource directory:
-
-```
-src/main/resources/sql/
-├── schema.sql                         # Complete MySQL DDL for fresh DB setup
-├── data.sql                           # Default seed / configuration data
-└── migrations/
-    └── V1__init_waroracle_schema.sql  # Versioned migration script
-```
-
-### Applying Schema Manually:
-```bash
-mysql -u root -p waroracle < src/main/resources/sql/schema.sql
-```
+### 3.4 User Feedback Telemetry
+* Users can submit accuracy feedback, bug reports, and UX ratings stored in `war_feedback` via `/warOracle/feedback`.

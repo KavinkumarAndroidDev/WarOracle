@@ -40,7 +40,7 @@ GET /warOracle/{playerTag}               POST /warOracle/simulate
 | Field | Type | Required | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `clanTag` | String | **Yes** | — | Clan tag (e.g. `"#2J2UQYRJ8"`). |
-| `quality` | String (Enum) | No | `"MEDIUM"` | Monte Carlo sample size. Options: `LOW` (10k runs), `MEDIUM` (50k runs), `HIGH` (100k runs), `MAX` (250k runs). |
+| `quality` | String (Enum) | No | `"MEDIUM"` | Monte Carlo iteration tier. Options: `LOW` (5k runs), `MEDIUM` (20k runs), `HIGH` (50k runs), `MAX` (100k runs). |
 
 ---
 
