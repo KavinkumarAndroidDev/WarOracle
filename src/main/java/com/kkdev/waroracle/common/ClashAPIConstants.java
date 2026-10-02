@@ -16,4 +16,8 @@ public class ClashAPIConstants
 	public final static String GET_CLAN_WARLOG = BASE_URL + "v1/clans/{clanTag}/warlog?limit={limit}";
 
 	public final static String GET_PLAYER_BATTLELOG = BASE_URL + "v1/players/{playerTag}/battlelog";
+
+	public final static String GET_CLANS_CURRENT_WAR_LEAGUE_GROUP = BASE_URL + "v1/clans/{clanTag}/currentwar/leaguegroup";
+
+	public final static String GET_CWL_WAR = BASE_URL + "v1/clanwarleagues/wars/{warTag}";
 }

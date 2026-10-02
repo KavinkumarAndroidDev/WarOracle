@@ -3,6 +3,7 @@ package com.kkdev.waroracle.dto.clan;
 import java.util.List;
 
 import com.kkdev.waroracle.dto.player.BadgeUrls;
+import com.kkdev.waroracle.dto.player.LeagueTier;
 
 import lombok.Data;
 
@@ -22,6 +23,7 @@ public class Clan
     private int warWinStreak;
     private int members;
     private BadgeUrls badgeUrls;
+    private LeagueTier warLeague;
 
     private List<ClanMember> memberList;
 }

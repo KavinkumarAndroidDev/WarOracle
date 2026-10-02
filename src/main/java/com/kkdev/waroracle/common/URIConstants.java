@@ -13,4 +13,9 @@ public class URIConstants
 	public final static String SIMULATION_QUALITIES = "warOracle/qualities";
 	public final static String FEEDBACK = "warOracle/feedback";
 	public final static String WAR_STRATEGY = "warOracle/strategy/plan";
+	public final static String CWL_GROUP = "warOracle/cwl/group/{clanTag}";
+	public final static String CWL_ROUND_WAR = "warOracle/cwl/round/{warTag}";
+	public final static String CWL_SIMULATE_ROUND = "warOracle/cwl/simulate/round";
+	public final static String CWL_SIMULATE_SEASON = "warOracle/cwl/simulate/season";
+	public final static String CWL_STRATEGY = "warOracle/cwl/strategy";
 }

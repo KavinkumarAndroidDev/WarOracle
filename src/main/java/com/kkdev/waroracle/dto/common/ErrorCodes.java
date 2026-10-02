@@ -15,7 +15,8 @@ public enum ErrorCodes
 	UNSUPPORTED_MEDIA_TYPE(1009, "Unsupported media type format"),
 	RESOURCE_NOT_FOUND(1010, "Requested endpoint resource was not found"),
 	DATABASE_ERROR(1011, "A database error occurred while processing your request"),
-	WAR_ALREADY_ENDED(1013, "War has ended. Simulation is only available for preparation or active battle days");
+	WAR_ALREADY_ENDED(1013, "War has ended. Simulation is only available for preparation or active battle days"),
+	CWL_GROUP_NOT_FOUND(1014, "Clan is not currently participating in Clan War Leagues or no active CWL season was found");
 
 	private final Integer errorCode;
 	private final String errorDescription;

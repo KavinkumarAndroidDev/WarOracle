@@ -13,6 +13,7 @@ import com.kkdev.waroracle.dto.clan.Clan;
 import com.kkdev.waroracle.dto.clan.CurrentWar;
 import com.kkdev.waroracle.dto.common.ErrorCodes;
 import com.kkdev.waroracle.dto.common.ErrorResponse;
+import com.kkdev.waroracle.dto.cwl.ClanWarLeagueGroupResponse;
 import com.kkdev.waroracle.dto.player.Player;
 import com.kkdev.waroracle.dto.warlog.ClanWarLogResponse;
 import com.kkdev.waroracle.exception.ClashApiException;
@@ -161,6 +162,59 @@ public class ClashApiClient
 			cacheService.putPlayerBattleLog(playerTag, battleLog);
 		}
 		return battleLog;
+	}
+
+	public ClanWarLeagueGroupResponse getClanWarLeagueGroup(String clanTag)
+	{
+		ClanWarLeagueGroupResponse cached = cacheService.getClanWarLeagueGroup(clanTag);
+		if (cached != null)
+		{
+			return cached;
+		}
+
+		String token = tokenProvider.getNextToken();
+		log.debug("Calling live Clash API for CWL group of clanTag: {}", clanTag);
+		ClanWarLeagueGroupResponse group = restClient.get()
+				.uri(ClashAPIConstants.GET_CLANS_CURRENT_WAR_LEAGUE_GROUP, clanTag)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+				.retrieve()
+				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.CWL_GROUP_NOT_FOUND, clanTag, token))
+				.body(ClanWarLeagueGroupResponse.class);
+
+		if (group != null)
+		{
+			cacheService.putClanWarLeagueGroup(clanTag, group);
+		}
+		return group;
+	}
+
+	public CurrentWar getCwlWar(String warTag)
+	{
+		if (warTag == null || warTag.trim().isEmpty() || warTag.equals("#0"))
+		{
+			return null;
+		}
+
+		CurrentWar cached = cacheService.getCwlWar(warTag);
+		if (cached != null)
+		{
+			return cached;
+		}
+
+		String token = tokenProvider.getNextToken();
+		log.debug("Calling live Clash API for CWL war round: {}", warTag);
+		CurrentWar roundWar = restClient.get()
+				.uri(ClashAPIConstants.GET_CWL_WAR, warTag)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+				.retrieve()
+				.onStatus(status -> status.isError(), (request, response) -> handleError(response, ErrorCodes.RESOURCE_NOT_FOUND, warTag, token))
+				.body(CurrentWar.class);
+
+		if (roundWar != null)
+		{
+			cacheService.putCwlWar(warTag, roundWar);
+		}
+		return roundWar;
 	}
 
 	private void handleError(ClientHttpResponse response, ErrorCodes notFoundCode, String tag, String tokenUsed) throws IOException

@@ -14,6 +14,7 @@ import com.hazelcast.map.IMap;
 import com.kkdev.waroracle.dto.battlelog.PlayerBattleLogResponse;
 import com.kkdev.waroracle.dto.clan.Clan;
 import com.kkdev.waroracle.dto.clan.CurrentWar;
+import com.kkdev.waroracle.dto.cwl.ClanWarLeagueGroupResponse;
 import com.kkdev.waroracle.dto.player.Player;
 import com.kkdev.waroracle.dto.warlog.ClanWarLogResponse;
 
@@ -30,6 +31,8 @@ public class ClashApiCacheService
 	private final IMap<String, String> currentWarMap;
 	private final IMap<String, String> battleLogMap;
 	private final IMap<String, String> warLogMap;
+	private final IMap<String, String> cwlGroupMap;
+	private final IMap<String, String> cwlWarMap;
 	private final JsonMapper jsonMapper;
 
 	@Value("${clash.api.cache.ttl-minutes:3}")
@@ -38,6 +41,9 @@ public class ClashApiCacheService
 	@Value("${clash.api.cache.war-ttl-minutes:1}")
 	private long warTtlMinutes;
 
+	@Value("${clash.api.cache.cwl-group-ttl-minutes:10}")
+	private long cwlGroupTtlMinutes;
+
 	public ClashApiCacheService(HazelcastInstance hazelcastInstance, JsonMapper jsonMapper)
 	{
 		this.playerMap = hazelcastInstance.getMap("clash-api-players");
@@ -45,6 +51,8 @@ public class ClashApiCacheService
 		this.currentWarMap = hazelcastInstance.getMap("clash-api-current-wars");
 		this.battleLogMap = hazelcastInstance.getMap("clash-api-battle-logs");
 		this.warLogMap = hazelcastInstance.getMap("clash-api-war-logs");
+		this.cwlGroupMap = hazelcastInstance.getMap("clash-api-cwl-groups");
+		this.cwlWarMap = hazelcastInstance.getMap("clash-api-cwl-wars");
 		this.jsonMapper = jsonMapper;
 	}
 
@@ -260,6 +268,81 @@ public class ClashApiCacheService
 		catch (Exception e)
 		{
 			log.warn("Failed to serialize war log for Hazelcast cache", e);
+		}
+	}
+
+	public ClanWarLeagueGroupResponse getClanWarLeagueGroup(String clanTag)
+	{
+		String json = cwlGroupMap.get(clanTag);
+		if (json != null)
+		{
+			try
+			{
+				log.debug("Hazelcast cache HIT for CWL group of clan: {}", clanTag);
+				return jsonMapper.readValue(json, ClanWarLeagueGroupResponse.class);
+			}
+			catch (Exception e)
+			{
+				log.warn("Failed to deserialize cached CWL group for clan {}", clanTag, e);
+			}
+		}
+		return null;
+	}
+
+	public void putClanWarLeagueGroup(String clanTag, ClanWarLeagueGroupResponse group)
+	{
+		if (group == null || clanTag == null) return;
+		try
+		{
+			String json = jsonMapper.writeValueAsString(group);
+			cwlGroupMap.put(clanTag, json, cwlGroupTtlMinutes, TimeUnit.MINUTES);
+			log.debug("Cached CWL group for clan {} in Hazelcast (TTL={}m)", clanTag, cwlGroupTtlMinutes);
+		}
+		catch (Exception e)
+		{
+			log.warn("Failed to serialize CWL group for Hazelcast cache", e);
+		}
+	}
+
+	public CurrentWar getCwlWar(String warTag)
+	{
+		String json = cwlWarMap.get(warTag);
+		if (json != null)
+		{
+			try
+			{
+				log.debug("Hazelcast cache HIT for CWL war: {}", warTag);
+				return jsonMapper.readValue(json, CurrentWar.class);
+			}
+			catch (Exception e)
+			{
+				log.warn("Failed to deserialize cached CWL war {}", warTag, e);
+			}
+		}
+		return null;
+	}
+
+	public void putCwlWar(String warTag, CurrentWar war)
+	{
+		if (war == null || warTag == null) return;
+		try
+		{
+			String json = jsonMapper.writeValueAsString(war);
+			long ttlSeconds;
+			if ("warEnded".equalsIgnoreCase(war.getState()))
+			{
+				ttlSeconds = 86400; // Concluded CWL wars are immutable for 24h
+			}
+			else
+			{
+				ttlSeconds = 180; // Active round wars cached for 3 minutes
+			}
+			cwlWarMap.put(warTag, json, ttlSeconds, TimeUnit.SECONDS);
+			log.debug("Cached CWL war {} in Hazelcast (TTL={}s)", warTag, ttlSeconds);
+		}
+		catch (Exception e)
+		{
+			log.warn("Failed to serialize CWL war for Hazelcast cache", e);
 		}
 	}
 }
