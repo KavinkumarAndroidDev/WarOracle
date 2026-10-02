@@ -4,11 +4,26 @@
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-brightgreen.svg?style=flat-square&logo=springboot)](https://spring.io/projects/spring-boot)
 [![Hazelcast](https://img.shields.io/badge/Hazelcast-In--Memory%20Data%20Grid-0099ff.svg?style=flat-square)](https://hazelcast.com/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0+-4479A1.svg?style=flat-square&logo=mysql&logoColor=white)](https://www.mysql.com/)
-[![Web App](https://img.shields.io/badge/Web%20App-waroracle.me-blueviolet.svg?style=flat-square)](https://waroracle.me)
-[![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Archived%20%2F%20Open%20Source-lightgrey.svg?style=flat-square)](https://github.com/KavinkumarAndroidDev/WarOracle)
 
-> **Live Platform:** [waroracle.me](https://waroracle.me)  
 > High-throughput predictive analytics, probabilistic outcome modeling, and automated war strategy optimization for competitive *Clash of Clans* Clan Wars and Clan War Leagues (CWL).
+
+---
+
+### 🪦 Project Graveyard & Developer Note
+
+> **A quick note from the developer:**  
+> This project is officially retired and placed into my personal **Project Graveyard** 🪦.
+> 
+> I initially started WarOracle purely out of curiosity and passion — I wanted to see if I could combine competitive *Clash of Clans* warfare with serious computational math: Monte Carlo trial simulations, Kuhn-Munkres bipartite matching, and Bayesian prior calibration.
+> 
+> I built the full backend, hooked it to a frontend SPA, and put it into the hands of real players. However, real-world user engagement wasn't quite there. In practice, most casual clans just attack their mirrors, and competitive leaders already had their own mental models. I realized that while the engineering and mathematics behind it were exciting to build, the product itself wasn't solving an urgent, everyday need for the broader player base. So, I decided to drop active development and move on to other ventures.
+> 
+> **Why Open Source it?**  
+> Rather than letting the code gather digital dust in a private repository, I've made it completely open-source. The repository contains solid production patterns: zero-heap simulation hot-loops, custom ForkJoin worker isolation, Hungarian graph matching, and distributed Hazelcast caching.
+> 
+> **Feel free to explore, learn from, fork, or reuse parts of this codebase** for your own projects, research, or gaming tools. Everything is documented thoroughly in the [`docs/`](docs/) directory. If you do use parts of this code in a public or commercial project, **all I ask is a small credit / attribution** back to this repo. Cheers! 🍻
 
 ---
 
@@ -16,7 +31,7 @@
 
 - [Overview](#-overview)
 - [System Architecture](#-system-architecture)
-- [Core Engines & Technical Specifications](#-core-engines)
+- [Core Engines & Technical Specifications](#-core-engines--technical-specifications)
   - [1. Monte Carlo War Simulation Engine](docs/MONTE_CARLO_SIMULATION.md)
   - [2. Kuhn-Munkres Strategic War Planner](docs/WAR_STRATEGY_OPTIMIZATION.md)
   - [3. Empirical Modeling & Hero Equipment Power](docs/HERO_EQUIPMENT_MODELING.md)
@@ -25,8 +40,8 @@
 - [REST API Reference](#-rest-api-reference)
 - [Configuration & Environment Variables](#-configuration--environment-variables)
 - [Local Development Setup](#-local-development-setup)
-- [Topics & Categorization](#-topics--categorization)
-- [License](#-license)
+- [Repository Documentation](#-repository-documentation)
+- [License & Attribution](#-license--attribution)
 
 ---
 
@@ -48,7 +63,7 @@ WarOracle follows a layered architecture with separation of concerns across pres
 
 ```mermaid
 flowchart TD
-    Client["React Frontend (waroracle.me) / REST API"] -->|HTTP / JSON| ControllerLayer["Controller Layer\n(PlayerController, WarStrategyController, FeedbackController)"]
+    Client["React Frontend / REST Client"] -->|HTTP / JSON| ControllerLayer["Controller Layer\n(PlayerController, WarStrategyController, FeedbackController)"]
     
     subgraph CoreServiceLayer ["Service Layer"]
         Orchestrator["WarOracleService\n(Aggregation & Parallel Execution)"]
@@ -83,7 +98,7 @@ flowchart TD
 
 ---
 
-## ⚙ Core Engines
+## ⚙ Core Engines & Technical Specifications
 
 ### 1. Monte Carlo War Simulation Engine
 
@@ -191,7 +206,7 @@ Simulating 50,000 war iterations under active HTTP traffic requires low memory a
 | **Database & ORM** | MySQL 8.0+ with Hibernate / Spring Data JPA |
 | **Optimization Algorithms** | Kuhn-Munkres (Hungarian) Bipartite Matching Solver, Monte Carlo Engine |
 | **Build & Utilities** | Apache Maven, Project Lombok |
-| **Frontend Companion** | React, TypeScript, Tailwind CSS ([waroracle.me](https://waroracle.me)) |
+| **Frontend Architecture** | React, TypeScript, Tailwind CSS |
 
 ---
 
@@ -285,7 +300,7 @@ mvn clean package -DskipTests
 ```
 
 ### 3. Start Required Services
-Ensure MySQL is running locally and create the database (if not automatically created):
+Ensure MySQL is running locally and create the database:
 ```sql
 CREATE DATABASE IF NOT EXISTS waroracle;
 ```
@@ -307,12 +322,24 @@ curl http://localhost:8080/warOracle/qualities
 
 ---
 
-## 🏷 Topics & Categorization
+## 📚 Repository Documentation
 
-`clash-of-clans` • `monte-carlo-simulation` • `game-simulation` • `hungarian-algorithm` • `bipartite-matching` • `java` • `spring-boot` • `hazelcast` • `mysql` • `react` • `game-analytics` • `clean-architecture`
+| Document | Purpose |
+| :--- | :--- |
+| **[`docs/MONTE_CARLO_SIMULATION.md`](docs/MONTE_CARLO_SIMULATION.md)** | Full mathematical formulation of stochastic simulation, destruction PDFs, and zero-allocation bit packing. |
+| **[`docs/WAR_STRATEGY_OPTIMIZATION.md`](docs/WAR_STRATEGY_OPTIMIZATION.md)** | Bipartite graph formulation, Kuhn-Munkres Hungarian algorithm implementation, and tactical modes. |
+| **[`docs/HERO_EQUIPMENT_MODELING.md`](docs/HERO_EQUIPMENT_MODELING.md)** | Hero/equipment progression ratios, Bayesian empirical priors, and time-decay math. |
+| **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** | Complete multi-layer backend system architecture and component catalog. |
+| **[`docs/DATABASE_PERSISTENCE.md`](docs/DATABASE_PERSISTENCE.md)** | Hybrid relational + JSON document ERD and deterministic SHA-256 war keys. |
+| **[`docs/CLAN_WAR_LEAGUES_SPECIFICATION.md`](docs/CLAN_WAR_LEAGUES_SPECIFICATION.md)** | Clan War Leagues (CWL) tournament mechanics, group scoring, and Supercell API schemas. |
+| **[`docs/SIMULATE_API_CONTRACT.md`](docs/SIMULATE_API_CONTRACT.md)** | Frontend REST integration contracts, payload schemas, and quality iteration tiers. |
 
 ---
 
-## 📄 License
+## 📄 License & Attribution
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is open-source software licensed under the **[MIT License](LICENSE)**.
+
+### Usage & Attribution Guidelines:
+- You are free to view, copy, modify, distribute, and integrate any part of this codebase into your own open-source, private, or commercial projects.
+- **Attribution Requirement:** If you reuse significant portions of this code, simulation logic, or optimization algorithms in a public or commercial product, please provide attribution linking back to this repository (`Kavinkumar / WarOracle`).
