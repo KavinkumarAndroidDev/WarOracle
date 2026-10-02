@@ -27,6 +27,15 @@
 
 ---
 
+## 🔗 Architecture & Companion Repositories
+
+| Repository | Role | Technology Stack |
+| :--- | :--- | :--- |
+| **[WarOracle Backend](https://github.com/KavinkumarAndroidDev/WarOracle)** *(This Repository)* | Monte Carlo Simulation & Kuhn-Munkres Optimization Engine | Java 21, Spring Boot 4, Hazelcast, MySQL |
+| **[WarOracle Frontend](https://github.com/KavinkumarAndroidDev/WarOracle_FrontEnd)** | Interactive Analytics & Strategy Visualization Client | React 18, Vite, Tailwind CSS, Chart.js |
+
+---
+
 ## 📌 Table of Contents
 
 - [Overview](#-overview)
